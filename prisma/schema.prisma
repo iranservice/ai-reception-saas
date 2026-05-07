@@ -1,0 +1,18 @@
+// ===========================================================================
+// Prisma Schema
+//
+// PostgreSQL datasource with Prisma Client generator.
+// Models will be added in future tasks. This file establishes
+// the Prisma configuration foundation only.
+//
+// NOTE: Prisma 7+ requires datasource URL to be configured in
+// prisma.config.ts, not in this schema file.
+// ===========================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
