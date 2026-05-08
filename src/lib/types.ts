@@ -1,7 +1,7 @@
 // ===========================================================================
 // Shared Type Definitions
 //
-// Common type aliases and enums used across all domains.
+// Common type aliases used across all domains.
 // Domain-specific types belong in their respective domain modules.
 // ===========================================================================
 
@@ -19,32 +19,3 @@ export type JsonValue =
   | null
   | JsonValue[]
   | { [key: string]: JsonValue };
-
-/** Business membership role */
-export enum BusinessRole {
-  OWNER = 'owner',
-  ADMIN = 'admin',
-  OPERATOR = 'operator',
-  VIEWER = 'viewer',
-}
-
-/** Audit log severity */
-export enum AuditSeverity {
-  INFO = 'info',
-  WARNING = 'warning',
-  CRITICAL = 'critical',
-}
-
-/** Conversation status */
-export enum ConversationStatus {
-  OPEN = 'open',
-  CLOSED = 'closed',
-  ARCHIVED = 'archived',
-}
-
-/** Owner type for routing */
-export enum OwnerType {
-  AI = 'ai',
-  HUMAN = 'human',
-  UNASSIGNED = 'unassigned',
-}

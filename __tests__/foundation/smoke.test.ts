@@ -10,12 +10,6 @@ import {
   ErrorCode,
   ErrorSeverity,
 } from '@/lib/errors';
-import {
-  BusinessRole,
-  AuditSeverity,
-  ConversationStatus,
-  OwnerType,
-} from '@/lib/types';
 
 describe('Foundation Smoke Test', () => {
   describe('Error Hierarchy', () => {
@@ -74,33 +68,6 @@ describe('Foundation Smoke Test', () => {
       expect(err).toBeInstanceOf(AppError);
       expect(err.code).toBe(ErrorCode.RATE_LIMITED);
       expect(err.httpStatus).toBe(429);
-    });
-  });
-
-  describe('Shared Types', () => {
-    it('BusinessRole enum has expected values', () => {
-      expect(BusinessRole.OWNER).toBe('owner');
-      expect(BusinessRole.ADMIN).toBe('admin');
-      expect(BusinessRole.OPERATOR).toBe('operator');
-      expect(BusinessRole.VIEWER).toBe('viewer');
-    });
-
-    it('AuditSeverity enum has expected values', () => {
-      expect(AuditSeverity.INFO).toBe('info');
-      expect(AuditSeverity.WARNING).toBe('warning');
-      expect(AuditSeverity.CRITICAL).toBe('critical');
-    });
-
-    it('ConversationStatus enum has expected values', () => {
-      expect(ConversationStatus.OPEN).toBe('open');
-      expect(ConversationStatus.CLOSED).toBe('closed');
-      expect(ConversationStatus.ARCHIVED).toBe('archived');
-    });
-
-    it('OwnerType enum has expected values', () => {
-      expect(OwnerType.AI).toBe('ai');
-      expect(OwnerType.HUMAN).toBe('human');
-      expect(OwnerType.UNASSIGNED).toBe('unassigned');
     });
   });
 
