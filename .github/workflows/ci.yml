@@ -11,6 +11,9 @@ jobs:
     name: Lint, Typecheck, Build, Test
     runs-on: ubuntu-latest
 
+    env:
+      DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci?schema=public'
+
     strategy:
       matrix:
         node-version: [20]
@@ -21,8 +24,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
