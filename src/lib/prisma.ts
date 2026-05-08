@@ -4,39 +4,34 @@
 // Prevents multiple PrismaClient instances during Next.js hot-reload.
 // Uses the Prisma 7 driver adapter pattern with @prisma/adapter-pg.
 //
-// See: https://www.prisma.io/docs/guides/other/troubleshooting-orm/help-articles/nextjs-prisma-client-dev-practices
+// Lazy initialization: getPrisma() throws if DATABASE_URL is missing.
+// Importing this module will NOT crash during build/test.
 // ===========================================================================
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { env } from './env';
 
-const connectionString = process.env.DATABASE_URL;
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
 
-function createPrismaClient(): PrismaClient {
-  if (!connectionString) {
-    // In development/test without a database, return a stub client
-    // that will fail on first actual query — but won't crash on import.
-    return new PrismaClient({
-      adapter: new PrismaPg(connectionString as unknown as string),
+export function getPrisma(): PrismaClient {
+  if (!env.databaseUrl) {
+    throw new Error('DATABASE_URL is required to initialize Prisma Client.');
+  }
+
+  if (!globalForPrisma.prisma) {
+    const adapter = new PrismaPg(env.databaseUrl);
+
+    globalForPrisma.prisma = new PrismaClient({
+      adapter,
+      log:
+        process.env.NODE_ENV === 'development'
+          ? ['query', 'error', 'warn']
+          : ['error'],
     });
   }
 
-  const adapter = new PrismaPg(connectionString);
-  return new PrismaClient({
-    adapter,
-    log:
-      process.env.NODE_ENV === 'development'
-        ? ['query', 'error', 'warn']
-        : ['error'],
-  });
-}
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+  return globalForPrisma.prisma;
 }
