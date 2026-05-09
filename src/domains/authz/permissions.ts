@@ -97,7 +97,7 @@ export function evaluateAccess(input: AccessCheckInput): AccessDecision {
     return { allowed: false, reason: 'UNKNOWN_PERMISSION' };
   }
 
-  if (hasPermission(role as MembershipRoleValue, permission)) {
+  if (hasPermission(role, permission)) {
     return { allowed: true };
   }
 

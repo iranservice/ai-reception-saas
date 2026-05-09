@@ -36,6 +36,7 @@ import {
   isSensitivePermission,
   evaluateAccess,
   isKnownPermission,
+  accessCheckInputSchema,
 } from '../../src/domains/authz';
 
 // ---------------------------------------------------------------------------
@@ -272,6 +273,16 @@ describe('Authz Permissions', () => {
   it('isKnownPermission works correctly', () => {
     expect(isKnownPermission('business.read')).toBe(true);
     expect(isKnownPermission('unknown.perm')).toBe(false);
+  });
+
+  it('accessCheckInputSchema rejects invalid role', () => {
+    const result = accessCheckInputSchema.safeParse({
+      userId: '550e8400-e29b-41d4-a716-446655440000',
+      businessId: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'INVALID_ROLE',
+      permission: 'business.read',
+    });
+    expect(result.success).toBe(false);
   });
 });
 

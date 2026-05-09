@@ -46,10 +46,12 @@ None.
 
 - 21 permissions defined in AUTHZ_PERMISSION_VALUES
 - ROLE_PERMISSIONS map: OWNER (all), ADMIN (all except business.delete), OPERATOR (customer/conversation/message/AI operations), VIEWER (read-only)
+- RolePermissionMap keyed by MembershipRoleValue (not string)
+- AccessCheckInput.role strongly typed as MembershipRoleValue
 - SENSITIVE_PERMISSIONS list
 - hasPermission, isSensitivePermission, isKnownPermission, evaluateAccess functions
 - evaluateAccess returns { allowed: false, reason: 'ROLE_NOT_PERMITTED' } for denied access
-- accessCheckInputSchema Zod schema
+- accessCheckInputSchema Zod schema rejects invalid roles
 
 ## Audit Domain
 
@@ -73,10 +75,10 @@ None.
 
 ## Tests Added
 
-37 tests in __tests__/domains/tenant-identity-validation.test.ts:
+38 tests in __tests__/domains/tenant-identity-validation.test.ts:
 - Identity: email lowercasing, locale defaults, invalid email rejection, empty update rejection, session validation, token hash validation
 - Tenancy: slug lowercasing, defaults, invalid slug rejection, empty update rejection, membership defaults, tenant context validation
-- Authz: OWNER all permissions, ADMIN no business.delete, OPERATOR conversations.reply, VIEWER messages.read, VIEWER no messages.create, sensitive permission checks, evaluateAccess behavior
+- Authz: OWNER all permissions, ADMIN no business.delete, OPERATOR conversations.reply, VIEWER messages.read, VIEWER no messages.create, sensitive permission checks, evaluateAccess behavior, accessCheckInputSchema rejects invalid role
 - Audit: USER actor requires actorUserId, SYSTEM actor without actorUserId, invalid action format rejection
 - Exports: all 4 domain index imports work
 
@@ -87,7 +89,7 @@ None.
 - pnpm prisma:generate — success
 - pnpm typecheck — success, 0 errors
 - pnpm lint — success, 0 errors
-- pnpm test — success, 88/88 passed (37 new + 51 existing)
+- pnpm test — success, 89/89 passed (38 new + 51 existing)
 - pnpm build — success
 
 ## Issues Found

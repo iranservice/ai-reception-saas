@@ -4,6 +4,8 @@
 // Permission constants, access decision types, and access check input.
 // ===========================================================================
 
+import type { MembershipRoleValue } from '../tenancy/types';
+
 /** All known permissions in the system */
 export const AUTHZ_PERMISSION_VALUES = [
   'business.read',
@@ -33,7 +35,7 @@ export const AUTHZ_PERMISSION_VALUES = [
 export type AuthzPermission = (typeof AUTHZ_PERMISSION_VALUES)[number];
 
 /** Map of roles to their allowed permissions */
-export type RolePermissionMap = Record<string, readonly AuthzPermission[]>;
+export type RolePermissionMap = Record<MembershipRoleValue, readonly AuthzPermission[]>;
 
 /** Result of an access check */
 export interface AccessDecision {
@@ -45,6 +47,6 @@ export interface AccessDecision {
 export interface AccessCheckInput {
   userId: string;
   businessId: string;
-  role: string;
+  role: MembershipRoleValue;
   permission: AuthzPermission;
 }
