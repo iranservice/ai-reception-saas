@@ -2,8 +2,8 @@
 // Prisma Schema
 //
 // PostgreSQL datasource with Prisma Client generator.
-// Models will be added in future tasks. This file establishes
-// the Prisma configuration foundation only.
+// Implements the tenant, identity, membership, session, and audit
+// foundation as designed in TASK-0005.
 //
 // NOTE: Prisma 7+ requires datasource URL to be configured in
 // prisma.config.ts, not in this schema file.
@@ -15,4 +15,164 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ===========================================================================
+// Enums
+// ===========================================================================
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DECLINED
+  EXPIRED
+  REMOVED
+  LEFT
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum AuditActorType {
+  USER
+  SYSTEM
+  AI_RECEPTIONIST
+}
+
+enum AuditResult {
+  SUCCESS
+  DENIED
+  FAILED
+}
+
+// ===========================================================================
+// Models — Identity Domain
+// ===========================================================================
+
+model User {
+  id        String     @id @default(uuid()) @db.Uuid
+  email     String     @unique
+  name      String
+  locale    String     @default("en")
+  status    UserStatus @default(ACTIVE)
+  avatarUrl String?    @map("avatar_url")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  sessions           Session[]
+  memberships        BusinessMembership[]
+  createdBusinesses  Business[]           @relation("BusinessCreator")
+  invitedMemberships BusinessMembership[] @relation("MembershipInviter")
+  auditEvents        AuditEvent[]         @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("sessions")
+}
+
+// ===========================================================================
+// Models — Tenancy Domain
+// ===========================================================================
+
+model Business {
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String         @unique
+  status          BusinessStatus @default(ACTIVE)
+  timezone        String         @default("Asia/Tehran")
+  locale          String         @default("fa")
+  createdByUserId String         @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  createdByUser User                 @relation("BusinessCreator", fields: [createdByUserId], references: [id])
+  memberships   BusinessMembership[]
+  auditEvents   AuditEvent[]
+
+  @@index([status])
+  @@index([createdByUserId])
+  @@map("businesses")
+}
+
+model BusinessMembership {
+  id              String           @id @default(uuid()) @db.Uuid
+  businessId      String           @map("business_id") @db.Uuid
+  userId          String           @map("user_id") @db.Uuid
+  role            MembershipRole   @default(VIEWER)
+  status          MembershipStatus @default(INVITED)
+  invitedByUserId String?          @map("invited_by_user_id") @db.Uuid
+  joinedAt        DateTime?        @map("joined_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  business      Business @relation(fields: [businessId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+  invitedByUser User?    @relation("MembershipInviter", fields: [invitedByUserId], references: [id])
+
+  @@unique([userId, businessId])
+  @@index([businessId])
+  @@index([userId])
+  @@index([businessId, role])
+  @@index([businessId, status])
+  @@map("business_memberships")
+}
+
+// ===========================================================================
+// Models — Audit Domain
+// ===========================================================================
+
+model AuditEvent {
+  id          String         @id @default(uuid()) @db.Uuid
+  businessId  String?        @map("business_id") @db.Uuid
+  actorType   AuditActorType @map("actor_type")
+  actorUserId String?        @map("actor_user_id") @db.Uuid
+  action      String
+  targetType  String?        @map("target_type")
+  targetId    String?        @map("target_id")
+  result      AuditResult
+  metadata    Json?
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  business  Business? @relation(fields: [businessId], references: [id])
+  actorUser User?     @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([result])
+  @@map("audit_events")
 }
