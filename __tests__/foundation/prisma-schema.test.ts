@@ -1,0 +1,218 @@
+import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+/**
+ * Prisma Schema Structure Tests
+ *
+ * Validates the prisma/schema.prisma file contains the expected
+ * enums, models, constraints, and mappings without requiring
+ * a live database connection.
+ */
+
+const SCHEMA_PATH = path.resolve(__dirname, '../../prisma/schema.prisma');
+const schema = fs.readFileSync(SCHEMA_PATH, 'utf-8');
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function enumExists(name: string): boolean {
+  return new RegExp(`enum\\s+${name}\\s*\\{`).test(schema);
+}
+
+function enumHasValue(enumName: string, value: string): boolean {
+  const match = schema.match(
+    new RegExp(`enum\\s+${enumName}\\s*\\{([^}]+)\\}`, 's'),
+  );
+  if (!match) return false;
+  return match[1].includes(value);
+}
+
+function modelExists(name: string): boolean {
+  return new RegExp(`model\\s+${name}\\s*\\{`).test(schema);
+}
+
+function modelDoesNotExist(name: string): boolean {
+  return !modelExists(name);
+}
+
+// ---------------------------------------------------------------------------
+// Enum tests
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Enums', () => {
+  it('defines UserStatus with ACTIVE, SUSPENDED, DEACTIVATED', () => {
+    expect(enumExists('UserStatus')).toBe(true);
+    expect(enumHasValue('UserStatus', 'ACTIVE')).toBe(true);
+    expect(enumHasValue('UserStatus', 'SUSPENDED')).toBe(true);
+    expect(enumHasValue('UserStatus', 'DEACTIVATED')).toBe(true);
+  });
+
+  it('defines BusinessStatus with ACTIVE, SUSPENDED, ARCHIVED', () => {
+    expect(enumExists('BusinessStatus')).toBe(true);
+    expect(enumHasValue('BusinessStatus', 'ACTIVE')).toBe(true);
+    expect(enumHasValue('BusinessStatus', 'SUSPENDED')).toBe(true);
+    expect(enumHasValue('BusinessStatus', 'ARCHIVED')).toBe(true);
+  });
+
+  it('defines MembershipStatus with INVITED, ACTIVE, DECLINED, EXPIRED, REMOVED, LEFT', () => {
+    expect(enumExists('MembershipStatus')).toBe(true);
+    expect(enumHasValue('MembershipStatus', 'INVITED')).toBe(true);
+    expect(enumHasValue('MembershipStatus', 'ACTIVE')).toBe(true);
+    expect(enumHasValue('MembershipStatus', 'DECLINED')).toBe(true);
+    expect(enumHasValue('MembershipStatus', 'EXPIRED')).toBe(true);
+    expect(enumHasValue('MembershipStatus', 'REMOVED')).toBe(true);
+    expect(enumHasValue('MembershipStatus', 'LEFT')).toBe(true);
+  });
+
+  it('defines MembershipRole with OWNER, ADMIN, OPERATOR, VIEWER', () => {
+    expect(enumExists('MembershipRole')).toBe(true);
+    expect(enumHasValue('MembershipRole', 'OWNER')).toBe(true);
+    expect(enumHasValue('MembershipRole', 'ADMIN')).toBe(true);
+    expect(enumHasValue('MembershipRole', 'OPERATOR')).toBe(true);
+    expect(enumHasValue('MembershipRole', 'VIEWER')).toBe(true);
+  });
+
+  it('defines AuditActorType with USER, SYSTEM, AI_RECEPTIONIST', () => {
+    expect(enumExists('AuditActorType')).toBe(true);
+    expect(enumHasValue('AuditActorType', 'USER')).toBe(true);
+    expect(enumHasValue('AuditActorType', 'SYSTEM')).toBe(true);
+    expect(enumHasValue('AuditActorType', 'AI_RECEPTIONIST')).toBe(true);
+  });
+
+  it('defines AuditResult with SUCCESS, DENIED, FAILED', () => {
+    expect(enumExists('AuditResult')).toBe(true);
+    expect(enumHasValue('AuditResult', 'SUCCESS')).toBe(true);
+    expect(enumHasValue('AuditResult', 'DENIED')).toBe(true);
+    expect(enumHasValue('AuditResult', 'FAILED')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Model existence tests
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Required Models', () => {
+  it('defines User model', () => {
+    expect(modelExists('User')).toBe(true);
+  });
+
+  it('defines Session model', () => {
+    expect(modelExists('Session')).toBe(true);
+  });
+
+  it('defines Business model', () => {
+    expect(modelExists('Business')).toBe(true);
+  });
+
+  it('defines BusinessMembership model', () => {
+    expect(modelExists('BusinessMembership')).toBe(true);
+  });
+
+  it('defines AuditEvent model', () => {
+    expect(modelExists('AuditEvent')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Forbidden model tests
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Forbidden Models', () => {
+  it.each([
+    'Role',
+    'Permission',
+    'RolePermission',
+    'PolicyRule',
+  ])('does not define deferred model: %s', (name) => {
+    expect(modelDoesNotExist(name)).toBe(true);
+  });
+
+  it.each([
+    'Customer',
+    'Conversation',
+    'Message',
+    'Channel',
+    'Billing',
+    'Analytics',
+  ])('does not define out-of-scope model: %s', (name) => {
+    expect(modelDoesNotExist(name)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Table mapping tests
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Table Mappings', () => {
+  it('maps BusinessMembership to business_memberships', () => {
+    expect(schema).toContain('@@map("business_memberships")');
+  });
+
+  it('maps AuditEvent to audit_events', () => {
+    expect(schema).toContain('@@map("audit_events")');
+  });
+
+  it('maps User to users', () => {
+    expect(schema).toContain('@@map("users")');
+  });
+
+  it('maps Session to sessions', () => {
+    expect(schema).toContain('@@map("sessions")');
+  });
+
+  it('maps Business to businesses', () => {
+    expect(schema).toContain('@@map("businesses")');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Constraint tests
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Constraints', () => {
+  it('has unique constraint on userId + businessId in BusinessMembership', () => {
+    expect(schema).toContain('@@unique([userId, businessId])');
+  });
+
+  it('has unique constraint on User email', () => {
+    // Within the User model, email should have @unique
+    const userModel = schema.match(/model\s+User\s*\{([\s\S]+?)\}/);
+    expect(userModel).not.toBeNull();
+    expect(userModel![1]).toContain('@unique');
+    expect(userModel![1]).toContain('email');
+  });
+
+  it('has unique constraint on Session tokenHash', () => {
+    const sessionModel = schema.match(/model\s+Session\s*\{([\s\S]+?)\}/);
+    expect(sessionModel).not.toBeNull();
+    expect(sessionModel![1]).toContain('tokenHash');
+    expect(sessionModel![1]).toContain('@unique');
+  });
+
+  it('has unique constraint on Business slug', () => {
+    const businessModel = schema.match(/model\s+Business\s*\{([\s\S]+?)\}/);
+    expect(businessModel).not.toBeNull();
+    expect(businessModel![1]).toContain('slug');
+    expect(businessModel![1]).toContain('@unique');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Security tests — no provider-specific fields
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — No Provider-Specific Fields', () => {
+  it('does not contain clerkId', () => {
+    expect(schema).not.toContain('clerkId');
+  });
+
+  it('does not contain supabaseUid', () => {
+    expect(schema).not.toContain('supabaseUid');
+  });
+
+  it('does not contain auth0Id', () => {
+    expect(schema).not.toContain('auth0Id');
+  });
+});
