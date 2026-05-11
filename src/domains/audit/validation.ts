@@ -22,6 +22,18 @@ const auditActionSchema = z
       'Action must start with a lowercase letter and contain only lowercase letters, numbers, dots, underscores, colons, and hyphens',
   });
 
+/** Recursive Zod schema for JSON-compatible values */
+const jsonValueSchema: z.ZodType<import('@/lib/types').JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 // ---------------------------------------------------------------------------
 // Enum schemas
 // ---------------------------------------------------------------------------
@@ -46,7 +58,7 @@ export const createAuditEventInputSchema = z
     targetType: z.string().min(1).max(120).optional(),
     targetId: z.string().min(1).max(160).optional(),
     result: auditResultSchema,
-    metadata: z.unknown().optional(),
+    metadata: jsonValueSchema.optional(),
   })
   .refine(
     (data) => {

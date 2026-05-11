@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { err } from '@/lib/result';
 import type { AuditService } from './service';
 import type { AuditRepository } from './repository';
-import type { CreateAuditEventInput } from './types';
 import {
   createAuditEventInputSchema,
   auditResultSchema,
@@ -55,7 +54,7 @@ export function createAuditService(deps: AuditServiceDeps): AuditService {
       if (!parsed.success) {
         return err('INVALID_AUDIT_INPUT', 'Invalid audit input');
       }
-      return repository.createAuditEvent(parsed.data as CreateAuditEventInput);
+      return repository.createAuditEvent(parsed.data);
     },
 
     async findAuditEventById(input) {

@@ -368,8 +368,10 @@ describe('Authz Service', () => {
 
   it('isSensitivePermission rejects unknown permission with UNKNOWN_PERMISSION', async () => {
     const service = createAuthzService();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await service.isSensitivePermission('not.a.real.permission' as any);
+    const unsafeService = service as {
+      isSensitivePermission(permission: unknown): ReturnType<typeof service.isSensitivePermission>;
+    };
+    const result = await unsafeService.isSensitivePermission('not.a.real.permission');
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('UNKNOWN_PERMISSION');
@@ -378,11 +380,18 @@ describe('Authz Service', () => {
 
   it('evaluateAccess rejects invalid role with INVALID_AUTHZ_INPUT', async () => {
     const service = createAuthzService();
-    const result = await service.evaluateAccess({
+    const unsafeService = service as {
+      evaluateAccess(input: {
+        userId: string;
+        businessId: string;
+        role: unknown;
+        permission: 'business.read';
+      }): ReturnType<typeof service.evaluateAccess>;
+    };
+    const result = await unsafeService.evaluateAccess({
       userId: MOCK_USER.id,
       businessId: MOCK_BUSINESS.id,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      role: 'INVALID_ROLE' as any,
+      role: 'INVALID_ROLE',
       permission: 'business.read',
     });
     expect(result.ok).toBe(false);
