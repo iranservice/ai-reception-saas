@@ -64,6 +64,7 @@ Concrete domain service implementations for identity, tenancy, authz, and audit.
 - Business defaults: timezone `Asia/Tehran`, locale `fa`
 - Membership defaults: role `VIEWER`, status `INVITED`
 - Audit limit: max 100, validated at service layer
+- Audit metadata is validated with recursive `jsonValueSchema` instead of `z.unknown()`.
 
 ## Tests Added
 
@@ -88,7 +89,7 @@ Concrete domain service implementations for identity, tenancy, authz, and audit.
 
 ## Issues Found
 
-- `createAuditEventInputSchema` uses `z.unknown()` for metadata, producing `unknown` type output. Required `as CreateAuditEventInput` assertion when passing to repository since domain type expects `JsonValue`. Runtime behavior is correct.
+None.
 
 ## Scope Confirmation
 
