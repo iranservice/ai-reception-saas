@@ -10,6 +10,7 @@ export const API_ERROR_STATUS_MAP: Record<string, number> = {
   // Authentication
   UNAUTHENTICATED: 401,
   AUTH_CONTEXT_UNAVAILABLE: 501,
+  INVALID_AUTH_CONTEXT: 400,
 
   // Authorization
   ACCESS_DENIED: 403,

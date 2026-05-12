@@ -263,7 +263,7 @@ export function getRequestId(request: Request): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Placeholder context resolver stubs
+// Context resolver stubs
 // ---------------------------------------------------------------------------
 
 /**
@@ -278,55 +278,50 @@ export async function resolveAnonymousRequestContext(
 }
 
 /**
- * Placeholder stub — always returns AUTH_CONTEXT_UNAVAILABLE.
- * Will be replaced when an auth provider is integrated.
+ * Resolves an authenticated user request context.
+ * Delegates to the default auth context adapter.
+ *
+ * Default behavior: returns AUTH_CONTEXT_UNAVAILABLE (501)
+ * unless ENABLE_DEV_AUTH_CONTEXT="true" and valid dev headers are present.
  */
 export async function resolveAuthenticatedRequestContext(
   request: Request,
 ): Promise<ContextResult<AuthenticatedUserRequestContext>> {
-  void request;
-  return {
-    ok: false,
-    response: apiError(
-      'AUTH_CONTEXT_UNAVAILABLE',
-      'Authentication context is not implemented yet',
-      501,
-    ),
-  };
+  const { getDefaultAuthContextAdapter } = await import(
+    './auth-context-adapter'
+  );
+  return getDefaultAuthContextAdapter().resolveAuthenticated(request);
 }
 
 /**
- * Placeholder stub — always returns AUTH_CONTEXT_UNAVAILABLE.
- * Will be replaced when tenant resolution is integrated.
+ * Resolves a tenant-scoped request context.
+ * Delegates to the default auth context adapter.
+ *
+ * Default behavior: returns AUTH_CONTEXT_UNAVAILABLE (501)
+ * unless ENABLE_DEV_AUTH_CONTEXT="true" and valid tenant dev headers are present.
  */
 export async function resolveTenantRequestContext(
   request: Request,
 ): Promise<ContextResult<TenantRequestContext>> {
-  void request;
-  return {
-    ok: false,
-    response: apiError(
-      'AUTH_CONTEXT_UNAVAILABLE',
-      'Tenant context is not implemented yet',
-      501,
-    ),
-  };
+  const { getDefaultAuthContextAdapter } = await import(
+    './auth-context-adapter'
+  );
+  return getDefaultAuthContextAdapter().resolveTenant(request);
 }
 
 /**
- * Placeholder stub — always returns AUTH_CONTEXT_UNAVAILABLE.
- * Will be replaced when system auth is integrated.
+ * Resolves a system/internal request context.
+ * Delegates to the default auth context adapter.
+ *
+ * Default behavior: returns AUTH_CONTEXT_UNAVAILABLE (501)
+ * unless ENABLE_DEV_AUTH_CONTEXT="true" and valid system dev headers are present.
  */
 export async function resolveSystemRequestContext(
   request: Request,
 ): Promise<ContextResult<SystemRequestContext>> {
-  void request;
-  return {
-    ok: false,
-    response: apiError(
-      'AUTH_CONTEXT_UNAVAILABLE',
-      'System context is not implemented yet',
-      501,
-    ),
-  };
+  const { getDefaultAuthContextAdapter } = await import(
+    './auth-context-adapter'
+  );
+  return getDefaultAuthContextAdapter().resolveSystem(request);
 }
+
