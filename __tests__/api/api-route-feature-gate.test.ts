@@ -10,6 +10,19 @@ import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+// Mock composition to avoid Prisma/DATABASE_URL initialization when
+// identity/me route is tested with ENABLE_API_HANDLERS=true
+vi.mock('@/app/api/_shared/composition', () => ({
+  getApiDependencies: () => ({
+    services: {
+      identity: {
+        findUserById: vi.fn(),
+        updateUser: vi.fn(),
+      },
+    },
+  }),
+}));
+
 import {
   areApiHandlersEnabled,
   API_HANDLERS_FEATURE_FLAG,
@@ -153,7 +166,7 @@ describe('createPlaceholderRoute', () => {
 describe('Route files default behavior', () => {
   it('GET /api/identity/me returns NOT_IMPLEMENTED by default', async () => {
     const { GET } = await import('@/app/api/identity/me/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/identity/me'));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -161,7 +174,7 @@ describe('Route files default behavior', () => {
 
   it('PATCH /api/identity/me returns NOT_IMPLEMENTED by default', async () => {
     const { PATCH } = await import('@/app/api/identity/me/route');
-    const res = await PATCH();
+    const res = await PATCH(new Request('http://localhost/api/identity/me', { method: 'PATCH' }));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -207,15 +220,15 @@ describe('Route files default behavior', () => {
 // ---------------------------------------------------------------------------
 
 describe('Route files with ENABLE_API_HANDLERS=true', () => {
-  it('GET /api/identity/me still returns NOT_IMPLEMENTED when enabled', async () => {
+  it('GET /api/identity/me returns AUTH_CONTEXT_UNAVAILABLE when enabled', async () => {
     const prev = process.env[API_HANDLERS_FEATURE_FLAG];
     process.env[API_HANDLERS_FEATURE_FLAG] = 'true';
     try {
       const { GET } = await import('@/app/api/identity/me/route');
-      const res = await GET();
+      const res = await GET(new Request('http://localhost/api/identity/me'));
       expect(res.status).toBe(501);
       const body = await res.json();
-      expect(body.error.code).toBe('NOT_IMPLEMENTED');
+      expect(body.error.code).toBe('AUTH_CONTEXT_UNAVAILABLE');
     } finally {
       if (prev !== undefined) {
         process.env[API_HANDLERS_FEATURE_FLAG] = prev;
@@ -250,8 +263,8 @@ describe('Route files with ENABLE_API_HANDLERS=true', () => {
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
-const ALL_ROUTE_FILES = [
-  'src/app/api/identity/me/route.ts',
+/** Route files that still use createPlaceholderRoute (not yet wired to real handlers) */
+const PLACEHOLDER_ROUTE_FILES = [
   'src/app/api/identity/users/[userId]/route.ts',
   'src/app/api/identity/sessions/route.ts',
   'src/app/api/identity/sessions/[sessionId]/revoke/route.ts',
@@ -268,8 +281,14 @@ const ALL_ROUTE_FILES = [
   'src/app/api/authz/roles/[role]/permissions/route.ts',
 ];
 
-describe('Route files import createPlaceholderRoute', () => {
-  it.each(ALL_ROUTE_FILES)(
+/** All route files including those wired to real handlers */
+const ALL_ROUTE_FILES = [
+  'src/app/api/identity/me/route.ts',
+  ...PLACEHOLDER_ROUTE_FILES,
+];
+
+describe('Placeholder route files import createPlaceholderRoute', () => {
+  it.each(PLACEHOLDER_ROUTE_FILES)(
     '%s imports createPlaceholderRoute',
     (routePath) => {
       const fullPath = path.join(PROJECT_ROOT, routePath);
@@ -292,8 +311,8 @@ const FORBIDDEN_IMPORTS = [
   "from '@/domains/audit/service'",
 ];
 
-describe('Route files do not import forbidden modules', () => {
-  it.each(ALL_ROUTE_FILES)(
+describe('Placeholder route files do not import forbidden modules', () => {
+  it.each(PLACEHOLDER_ROUTE_FILES)(
     '%s does not import forbidden modules',
     (routePath) => {
       const fullPath = path.join(PROJECT_ROOT, routePath);
