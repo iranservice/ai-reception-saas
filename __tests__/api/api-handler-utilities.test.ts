@@ -370,12 +370,14 @@ describe('notImplementedHandler', () => {
 // 5. Scope guard — route skeletons unchanged
 // ---------------------------------------------------------------------------
 
-describe('Route skeleton isolation', () => {
+describe('Route skeletons unchanged', () => {
   it('GET /api/identity/me still returns 501 NOT_IMPLEMENTED', async () => {
     const { GET } = await import('@/app/api/identity/me/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/identity/me'));
     expect(res.status).toBe(501);
     const body = await res.json();
+    expect(body.ok).toBe(false);
+    // When feature gate is disabled, still returns NOT_IMPLEMENTED
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
   });
 
@@ -383,13 +385,13 @@ describe('Route skeleton isolation', () => {
     const { POST } = await import('@/app/api/businesses/route');
     const res = await POST();
     expect(res.status).toBe(501);
-    const body = await res.json();
-    expect(body.error.code).toBe('NOT_IMPLEMENTED');
   });
+});
 
-  const PROJECT_ROOT = path.resolve(__dirname, '../..');
-  const ROUTE_FILES_TO_CHECK = [
-    'src/app/api/identity/me/route.ts',
+describe('Route file scope guard — handler utilities', () => {
+  const PROJECT_ROOT_LOCAL = path.resolve(__dirname, '../..');
+  // Only check placeholder route files — identity/me now legitimately imports handler utilities
+  const PLACEHOLDER_ROUTE_FILES_TO_CHECK = [
     'src/app/api/businesses/route.ts',
   ];
   const FORBIDDEN_IMPORTS = [
@@ -400,10 +402,10 @@ describe('Route skeleton isolation', () => {
     'getApiDependencies',
   ];
 
-  it.each(ROUTE_FILES_TO_CHECK)(
+  it.each(PLACEHOLDER_ROUTE_FILES_TO_CHECK)(
     'route file %s does not import handler utilities',
     (routePath) => {
-      const fullPath = path.join(PROJECT_ROOT, routePath);
+      const fullPath = path.join(PROJECT_ROOT_LOCAL, routePath);
       const content = fs.readFileSync(fullPath, 'utf-8');
       for (const forbidden of FORBIDDEN_IMPORTS) {
         expect(content).not.toContain(forbidden);

@@ -303,7 +303,7 @@ describe('resetApiDependenciesForTests', () => {
 describe('Route skeletons unchanged', () => {
   it('GET /api/identity/me still returns 501 NOT_IMPLEMENTED', async () => {
     const { GET } = await import('@/app/api/identity/me/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/identity/me'));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.ok).toBe(false);
@@ -358,7 +358,7 @@ describe('Composition root isolation', () => {
     // Routes should still work (return NOT_IMPLEMENTED) without
     // composition being wired
     const { GET } = await import('@/app/api/identity/me/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/identity/me'));
     expect(res.status).toBe(501);
   });
 });

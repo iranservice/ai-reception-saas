@@ -119,7 +119,7 @@ describe('getHttpStatusForError', () => {
 describe('Route skeleton placeholder behavior', () => {
   it('GET /api/identity/me returns 501 NOT_IMPLEMENTED', async () => {
     const { GET } = await import('@/app/api/identity/me/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/identity/me'));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.ok).toBe(false);
@@ -129,7 +129,7 @@ describe('Route skeleton placeholder behavior', () => {
 
   it('PATCH /api/identity/me returns 501 NOT_IMPLEMENTED', async () => {
     const { PATCH } = await import('@/app/api/identity/me/route');
-    const res = await PATCH();
+    const res = await PATCH(new Request('http://localhost/api/identity/me', { method: 'PATCH' }));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
