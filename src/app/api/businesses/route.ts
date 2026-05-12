@@ -2,12 +2,7 @@
 // Businesses — POST/GET /api/businesses
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function POST(): Promise<Response> {
-  return apiNotImplemented('POST /api/businesses');
-}
-
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/businesses');
-}
+export const POST = createPlaceholderRoute('POST /api/businesses');
+export const GET = createPlaceholderRoute('GET /api/businesses');

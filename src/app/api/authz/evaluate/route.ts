@@ -2,8 +2,6 @@
 // Authz — POST /api/authz/evaluate
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function POST(): Promise<Response> {
-  return apiNotImplemented('POST /api/authz/evaluate');
-}
+export const POST = createPlaceholderRoute('POST /api/authz/evaluate');

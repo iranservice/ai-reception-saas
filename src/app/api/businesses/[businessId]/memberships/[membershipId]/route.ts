@@ -2,10 +2,8 @@
 // Memberships — DELETE /api/businesses/:businessId/memberships/:membershipId
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function DELETE(): Promise<Response> {
-  return apiNotImplemented(
-    'DELETE /api/businesses/:businessId/memberships/:membershipId',
-  );
-}
+export const DELETE = createPlaceholderRoute(
+  'DELETE /api/businesses/:businessId/memberships/:membershipId',
+);

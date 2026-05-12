@@ -2,12 +2,7 @@
 // Identity — GET/PATCH /api/identity/me
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/identity/me');
-}
-
-export async function PATCH(): Promise<Response> {
-  return apiNotImplemented('PATCH /api/identity/me');
-}
+export const GET = createPlaceholderRoute('GET /api/identity/me');
+export const PATCH = createPlaceholderRoute('PATCH /api/identity/me');

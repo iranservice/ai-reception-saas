@@ -2,12 +2,7 @@
 // Businesses — GET/PATCH /api/businesses/:businessId
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/businesses/:businessId');
-}
-
-export async function PATCH(): Promise<Response> {
-  return apiNotImplemented('PATCH /api/businesses/:businessId');
-}
+export const GET = createPlaceholderRoute('GET /api/businesses/:businessId');
+export const PATCH = createPlaceholderRoute('PATCH /api/businesses/:businessId');
