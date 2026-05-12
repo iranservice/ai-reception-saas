@@ -9,10 +9,12 @@
 export const API_ERROR_STATUS_MAP: Record<string, number> = {
   // Authentication
   UNAUTHENTICATED: 401,
+  AUTH_CONTEXT_UNAVAILABLE: 501,
 
   // Authorization
   ACCESS_DENIED: 403,
   TENANT_ACCESS_DENIED: 403,
+  TENANT_CONTEXT_REQUIRED: 403,
 
   // Validation — Identity
   INVALID_IDENTITY_INPUT: 400,
