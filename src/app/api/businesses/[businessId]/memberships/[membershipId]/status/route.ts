@@ -2,10 +2,8 @@
 // Memberships — PATCH /api/businesses/:businessId/memberships/:membershipId/status
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function PATCH(): Promise<Response> {
-  return apiNotImplemented(
-    'PATCH /api/businesses/:businessId/memberships/:membershipId/status',
-  );
-}
+export const PATCH = createPlaceholderRoute(
+  'PATCH /api/businesses/:businessId/memberships/:membershipId/status',
+);

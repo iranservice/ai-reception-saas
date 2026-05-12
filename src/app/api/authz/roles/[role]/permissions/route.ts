@@ -2,8 +2,8 @@
 // Authz — GET /api/authz/roles/:role/permissions
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/authz/roles/:role/permissions');
-}
+export const GET = createPlaceholderRoute(
+  'GET /api/authz/roles/:role/permissions',
+);

@@ -2,12 +2,7 @@
 // Identity — POST/GET /api/identity/sessions
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function POST(): Promise<Response> {
-  return apiNotImplemented('POST /api/identity/sessions');
-}
-
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/identity/sessions');
-}
+export const POST = createPlaceholderRoute('POST /api/identity/sessions');
+export const GET = createPlaceholderRoute('GET /api/identity/sessions');

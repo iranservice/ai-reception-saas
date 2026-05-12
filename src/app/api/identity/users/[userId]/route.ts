@@ -2,8 +2,6 @@
 // Identity — GET /api/identity/users/:userId
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/identity/users/:userId');
-}
+export const GET = createPlaceholderRoute('GET /api/identity/users/:userId');

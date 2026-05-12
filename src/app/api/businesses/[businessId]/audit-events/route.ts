@@ -2,8 +2,8 @@
 // Audit — GET /api/businesses/:businessId/audit-events
 // ===========================================================================
 
-import { apiNotImplemented } from '@/app/api/_shared/responses';
+import { createPlaceholderRoute } from '@/app/api/_shared/route-handler';
 
-export async function GET(): Promise<Response> {
-  return apiNotImplemented('GET /api/businesses/:businessId/audit-events');
-}
+export const GET = createPlaceholderRoute(
+  'GET /api/businesses/:businessId/audit-events',
+);
