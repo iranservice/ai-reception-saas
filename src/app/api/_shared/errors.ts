@@ -45,11 +45,18 @@ export const API_ERROR_STATUS_MAP: Record<string, number> = {
   MEMBERSHIP_INACTIVE: 400,
   UNKNOWN_PERMISSION: 400,
 
+  // Request parsing
+  INVALID_JSON_BODY: 400,
+
   // Repository / internal errors
   IDENTITY_REPOSITORY_ERROR: 500,
   TENANCY_REPOSITORY_ERROR: 500,
   AUDIT_REPOSITORY_ERROR: 500,
   AUDIT_WRITE_FAILED: 500,
+  INTERNAL_SERVER_ERROR: 500,
+
+  // Not implemented
+  NOT_IMPLEMENTED: 501,
 };
 
 /**
