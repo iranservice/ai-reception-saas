@@ -266,8 +266,6 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 /** Route files that still use createPlaceholderRoute (not yet wired to real handlers) */
 const PLACEHOLDER_ROUTE_FILES = [
   'src/app/api/identity/users/[userId]/route.ts',
-  'src/app/api/identity/sessions/route.ts',
-  'src/app/api/identity/sessions/[sessionId]/revoke/route.ts',
   'src/app/api/businesses/route.ts',
   'src/app/api/businesses/[businessId]/route.ts',
   'src/app/api/businesses/[businessId]/memberships/route.ts',
