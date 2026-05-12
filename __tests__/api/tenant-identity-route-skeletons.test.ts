@@ -5,9 +5,26 @@
 // and route file inventory. No server startup or DB required.
 // ===========================================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
+// Mock composition to avoid Prisma/DATABASE_URL initialization when
+// session routes are imported with ENABLE_API_HANDLERS=true
+vi.mock('@/app/api/_shared/composition', () => ({
+  getApiDependencies: () => ({
+    services: {
+      identity: {
+        findUserById: vi.fn(),
+        updateUser: vi.fn(),
+        createSession: vi.fn(),
+        listUserSessions: vi.fn(),
+        findSessionById: vi.fn(),
+        revokeSession: vi.fn(),
+      },
+    },
+  }),
+}));
 
 import {
   apiOk,
@@ -148,7 +165,7 @@ describe('Route skeleton placeholder behavior', () => {
 
   it('POST /api/identity/sessions returns 501 NOT_IMPLEMENTED', async () => {
     const { POST } = await import('@/app/api/identity/sessions/route');
-    const res = await POST();
+    const res = await POST(new Request('http://localhost/api/identity/sessions', { method: 'POST' }));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -156,7 +173,7 @@ describe('Route skeleton placeholder behavior', () => {
 
   it('GET /api/identity/sessions returns 501 NOT_IMPLEMENTED', async () => {
     const { GET } = await import('@/app/api/identity/sessions/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/identity/sessions'));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -166,7 +183,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { POST } = await import(
       '@/app/api/identity/sessions/[sessionId]/revoke/route'
     );
-    const res = await POST();
+    const res = await POST(
+      new Request('http://localhost/api/identity/sessions/x/revoke', { method: 'POST' }),
+      { params: Promise.resolve({ sessionId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
