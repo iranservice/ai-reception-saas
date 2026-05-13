@@ -312,7 +312,7 @@ describe('Route skeletons unchanged', () => {
 
   it('POST /api/businesses still returns 501 NOT_IMPLEMENTED', async () => {
     const { POST } = await import('@/app/api/businesses/route');
-    const res = await POST();
+    const res = await POST(new Request('http://localhost/api/businesses', { method: 'POST' }));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.ok).toBe(false);
