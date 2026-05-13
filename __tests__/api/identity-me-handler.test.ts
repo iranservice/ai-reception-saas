@@ -340,8 +340,6 @@ describe('Scope guards', () => {
 
   const OTHER_ROUTE_FILES = [
     'src/app/api/identity/users/[userId]/route.ts',
-    'src/app/api/businesses/[businessId]/audit-events/route.ts',
-    'src/app/api/businesses/[businessId]/audit-events/[auditEventId]/route.ts',
     'src/app/api/authz/evaluate/route.ts',
     'src/app/api/authz/require/route.ts',
     'src/app/api/authz/roles/[role]/permissions/route.ts',

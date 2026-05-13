@@ -208,7 +208,10 @@ describe('Route files default behavior', () => {
     const { GET } = await import(
       '@/app/api/businesses/[businessId]/audit-events/route'
     );
-    const res = await GET();
+    const res = await GET(
+      new Request('http://localhost/api/businesses/test-id/audit-events'),
+      { params: Promise.resolve({ businessId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -266,8 +269,6 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 /** Route files that still use createPlaceholderRoute (not yet wired to real handlers) */
 const PLACEHOLDER_ROUTE_FILES = [
   'src/app/api/identity/users/[userId]/route.ts',
-  'src/app/api/businesses/[businessId]/audit-events/route.ts',
-  'src/app/api/businesses/[businessId]/audit-events/[auditEventId]/route.ts',
   'src/app/api/authz/evaluate/route.ts',
   'src/app/api/authz/require/route.ts',
   'src/app/api/authz/roles/[role]/permissions/route.ts',
