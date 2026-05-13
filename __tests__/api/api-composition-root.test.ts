@@ -321,7 +321,9 @@ describe('Route skeletons unchanged', () => {
 
   it('POST /api/authz/evaluate still returns 501 NOT_IMPLEMENTED', async () => {
     const { POST } = await import('@/app/api/authz/evaluate/route');
-    const res = await POST();
+    const res = await POST(
+      new Request('http://localhost/api/authz/evaluate', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } }),
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');

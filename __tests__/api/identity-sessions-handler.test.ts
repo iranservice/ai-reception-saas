@@ -640,7 +640,6 @@ describe('Scope guards', () => {
   it('non-session placeholder routes remain unchanged', () => {
     const placeholderRoutes = [
       'src/app/api/identity/users/[userId]/route.ts',
-      'src/app/api/authz/evaluate/route.ts',
     ];
 
     for (const routePath of placeholderRoutes) {
