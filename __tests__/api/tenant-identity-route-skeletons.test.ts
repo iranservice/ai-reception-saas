@@ -240,7 +240,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { GET } = await import(
       '@/app/api/businesses/[businessId]/memberships/route'
     );
-    const res = await GET();
+    const res = await GET(
+      new Request('http://localhost/api/businesses/test-id/memberships'),
+      { params: Promise.resolve({ businessId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -250,7 +253,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { POST } = await import(
       '@/app/api/businesses/[businessId]/memberships/route'
     );
-    const res = await POST();
+    const res = await POST(
+      new Request('http://localhost/api/businesses/test-id/memberships', { method: 'POST' }),
+      { params: Promise.resolve({ businessId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -260,7 +266,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { PATCH } = await import(
       '@/app/api/businesses/[businessId]/memberships/[membershipId]/role/route'
     );
-    const res = await PATCH();
+    const res = await PATCH(
+      new Request('http://localhost', { method: 'PATCH' }),
+      { params: Promise.resolve({ businessId: 'test-id', membershipId: 'test-mid' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -270,7 +279,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { PATCH } = await import(
       '@/app/api/businesses/[businessId]/memberships/[membershipId]/status/route'
     );
-    const res = await PATCH();
+    const res = await PATCH(
+      new Request('http://localhost', { method: 'PATCH' }),
+      { params: Promise.resolve({ businessId: 'test-id', membershipId: 'test-mid' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -280,7 +292,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { DELETE } = await import(
       '@/app/api/businesses/[businessId]/memberships/[membershipId]/route'
     );
-    const res = await DELETE();
+    const res = await DELETE(
+      new Request('http://localhost', { method: 'DELETE' }),
+      { params: Promise.resolve({ businessId: 'test-id', membershipId: 'test-mid' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
