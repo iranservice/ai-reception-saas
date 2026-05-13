@@ -333,7 +333,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { GET } = await import(
       '@/app/api/businesses/[businessId]/audit-events/route'
     );
-    const res = await GET();
+    const res = await GET(
+      new Request('http://localhost/api/businesses/test-id/audit-events'),
+      { params: Promise.resolve({ businessId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -343,7 +346,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { GET } = await import(
       '@/app/api/businesses/[businessId]/audit-events/[auditEventId]/route'
     );
-    const res = await GET();
+    const res = await GET(
+      new Request('http://localhost'),
+      { params: Promise.resolve({ businessId: 'test-id', auditEventId: 'test-aid' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
