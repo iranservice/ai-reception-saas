@@ -198,7 +198,9 @@ describe('Route files default behavior', () => {
 
   it('POST /api/authz/evaluate returns NOT_IMPLEMENTED by default', async () => {
     const { POST } = await import('@/app/api/authz/evaluate/route');
-    const res = await POST();
+    const res = await POST(
+      new Request('http://localhost/api/authz/evaluate', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } }),
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -269,9 +271,6 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 /** Route files that still use createPlaceholderRoute (not yet wired to real handlers) */
 const PLACEHOLDER_ROUTE_FILES = [
   'src/app/api/identity/users/[userId]/route.ts',
-  'src/app/api/authz/evaluate/route.ts',
-  'src/app/api/authz/require/route.ts',
-  'src/app/api/authz/roles/[role]/permissions/route.ts',
 ];
 
 /** All route files including those wired to real handlers */

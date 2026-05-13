@@ -340,9 +340,6 @@ describe('Scope guards', () => {
 
   const OTHER_ROUTE_FILES = [
     'src/app/api/identity/users/[userId]/route.ts',
-    'src/app/api/authz/evaluate/route.ts',
-    'src/app/api/authz/require/route.ts',
-    'src/app/api/authz/roles/[role]/permissions/route.ts',
   ];
 
   it('other route files remain placeholder-only and do not import handler module', () => {

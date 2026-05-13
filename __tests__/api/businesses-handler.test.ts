@@ -558,7 +558,6 @@ describe('Scope guards', () => {
   it('non-business placeholder routes remain unchanged', () => {
     const placeholders = [
       'src/app/api/identity/users/[userId]/route.ts',
-      'src/app/api/authz/evaluate/route.ts',
     ];
     for (const rp of placeholders) {
       const c = fs.readFileSync(path.join(PROJECT_ROOT, rp), 'utf-8');

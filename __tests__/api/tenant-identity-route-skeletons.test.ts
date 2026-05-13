@@ -303,27 +303,32 @@ describe('Route skeleton placeholder behavior', () => {
 
   it('POST /api/authz/evaluate returns 501 NOT_IMPLEMENTED', async () => {
     const { POST } = await import('@/app/api/authz/evaluate/route');
-    const res = await POST();
+    const res = await POST(
+      new Request('http://localhost/api/authz/evaluate', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } }),
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
-    expect(body.error.message).toContain('POST /api/authz/evaluate');
   });
 
   it('POST /api/authz/require returns 501 NOT_IMPLEMENTED', async () => {
     const { POST } = await import('@/app/api/authz/require/route');
-    const res = await POST();
+    const res = await POST(
+      new Request('http://localhost/api/authz/require', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } }),
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
-    expect(body.error.message).toContain('POST /api/authz/require');
   });
 
   it('GET /api/authz/roles/:role/permissions returns 501', async () => {
     const { GET } = await import(
       '@/app/api/authz/roles/[role]/permissions/route'
     );
-    const res = await GET();
+    const res = await GET(
+      new Request('http://localhost'),
+      { params: Promise.resolve({ role: 'OWNER' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');

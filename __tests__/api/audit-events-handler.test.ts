@@ -121,5 +121,5 @@ describe('Scope guards', () => {
   it('audit-events route.ts clean', () => { const c = fs.readFileSync(path.join(ROOT, 'src/app/api/businesses/[businessId]/audit-events/route.ts'), 'utf-8'); for (const f of FORBID_ROUTE) expect(c).not.toContain(f); });
   it('audit-events/[auditEventId]/route.ts clean', () => { const c = fs.readFileSync(path.join(ROOT, 'src/app/api/businesses/[businessId]/audit-events/[auditEventId]/route.ts'), 'utf-8'); for (const f of FORBID_ROUTE) expect(c).not.toContain(f); });
   it('handler.ts clean', () => { const c = fs.readFileSync(path.join(ROOT, 'src/app/api/businesses/[businessId]/audit-events/handler.ts'), 'utf-8'); for (const f of FORBID_HANDLER) expect(c).not.toContain(f); });
-  it('non-audit placeholders unchanged', () => { for (const p of ['src/app/api/identity/users/[userId]/route.ts','src/app/api/authz/evaluate/route.ts']) { const c = fs.readFileSync(path.join(ROOT, p), 'utf-8'); expect(c).toContain('createPlaceholderRoute'); } });
+  it('non-audit placeholders unchanged', () => { for (const p of ['src/app/api/identity/users/[userId]/route.ts']) { const c = fs.readFileSync(path.join(ROOT, p), 'utf-8'); expect(c).toContain('createPlaceholderRoute'); } });
 });

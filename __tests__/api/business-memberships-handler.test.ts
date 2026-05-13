@@ -163,5 +163,5 @@ describe('Scope guards', () => {
   it('status route.ts clean', () => { const c = fs.readFileSync(path.join(ROOT, 'src/app/api/businesses/[businessId]/memberships/[membershipId]/status/route.ts'), 'utf-8'); for (const f of FORBID_ROUTE) expect(c).not.toContain(f); });
   it('delete route.ts clean', () => { const c = fs.readFileSync(path.join(ROOT, 'src/app/api/businesses/[businessId]/memberships/[membershipId]/route.ts'), 'utf-8'); for (const f of FORBID_ROUTE) expect(c).not.toContain(f); });
   it('handler.ts clean', () => { const c = fs.readFileSync(path.join(ROOT, 'src/app/api/businesses/[businessId]/memberships/handler.ts'), 'utf-8'); for (const f of FORBID_HANDLER) expect(c).not.toContain(f); });
-  it('non-membership placeholders unchanged', () => { for (const p of ['src/app/api/identity/users/[userId]/route.ts','src/app/api/authz/evaluate/route.ts']) { const c = fs.readFileSync(path.join(ROOT, p), 'utf-8'); expect(c).toContain('createPlaceholderRoute'); } });
+  it('non-membership placeholders unchanged', () => { for (const p of ['src/app/api/identity/users/[userId]/route.ts']) { const c = fs.readFileSync(path.join(ROOT, p), 'utf-8'); expect(c).toContain('createPlaceholderRoute'); } });
 });
