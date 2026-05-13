@@ -182,7 +182,7 @@ describe('Route files default behavior', () => {
 
   it('POST /api/businesses returns NOT_IMPLEMENTED by default', async () => {
     const { POST } = await import('@/app/api/businesses/route');
-    const res = await POST();
+    const res = await POST(new Request('http://localhost/api/businesses', { method: 'POST' }));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -190,7 +190,7 @@ describe('Route files default behavior', () => {
 
   it('GET /api/businesses returns NOT_IMPLEMENTED by default', async () => {
     const { GET } = await import('@/app/api/businesses/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/businesses'));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -238,15 +238,15 @@ describe('Route files with ENABLE_API_HANDLERS=true', () => {
     }
   });
 
-  it('POST /api/businesses still returns NOT_IMPLEMENTED when enabled', async () => {
+  it('POST /api/businesses returns AUTH_CONTEXT_UNAVAILABLE when enabled', async () => {
     const prev = process.env[API_HANDLERS_FEATURE_FLAG];
     process.env[API_HANDLERS_FEATURE_FLAG] = 'true';
     try {
       const { POST } = await import('@/app/api/businesses/route');
-      const res = await POST();
+      const res = await POST(new Request('http://localhost/api/businesses', { method: 'POST' }));
       expect(res.status).toBe(501);
       const body = await res.json();
-      expect(body.error.code).toBe('NOT_IMPLEMENTED');
+      expect(body.error.code).toBe('AUTH_CONTEXT_UNAVAILABLE');
     } finally {
       if (prev !== undefined) {
         process.env[API_HANDLERS_FEATURE_FLAG] = prev;
@@ -266,8 +266,6 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 /** Route files that still use createPlaceholderRoute (not yet wired to real handlers) */
 const PLACEHOLDER_ROUTE_FILES = [
   'src/app/api/identity/users/[userId]/route.ts',
-  'src/app/api/businesses/route.ts',
-  'src/app/api/businesses/[businessId]/route.ts',
   'src/app/api/businesses/[businessId]/memberships/route.ts',
   'src/app/api/businesses/[businessId]/memberships/[membershipId]/role/route.ts',
   'src/app/api/businesses/[businessId]/memberships/[membershipId]/status/route.ts',

@@ -194,7 +194,7 @@ describe('Route skeleton placeholder behavior', () => {
 
   it('POST /api/businesses returns 501 NOT_IMPLEMENTED', async () => {
     const { POST } = await import('@/app/api/businesses/route');
-    const res = await POST();
+    const res = await POST(new Request('http://localhost/api/businesses', { method: 'POST' }));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -203,7 +203,7 @@ describe('Route skeleton placeholder behavior', () => {
 
   it('GET /api/businesses returns 501 NOT_IMPLEMENTED', async () => {
     const { GET } = await import('@/app/api/businesses/route');
-    const res = await GET();
+    const res = await GET(new Request('http://localhost/api/businesses'));
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -214,7 +214,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { GET } = await import(
       '@/app/api/businesses/[businessId]/route'
     );
-    const res = await GET();
+    const res = await GET(
+      new Request('http://localhost/api/businesses/test-id'),
+      { params: Promise.resolve({ businessId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
@@ -224,7 +227,10 @@ describe('Route skeleton placeholder behavior', () => {
     const { PATCH } = await import(
       '@/app/api/businesses/[businessId]/route'
     );
-    const res = await PATCH();
+    const res = await PATCH(
+      new Request('http://localhost/api/businesses/test-id', { method: 'PATCH' }),
+      { params: Promise.resolve({ businessId: 'test-id' }) },
+    );
     expect(res.status).toBe(501);
     const body = await res.json();
     expect(body.error.code).toBe('NOT_IMPLEMENTED');
