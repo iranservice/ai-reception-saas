@@ -66,8 +66,6 @@ export interface AuthjsAdapterDB {
         emailVerified?: Date | null;
       };
     }): Promise<InternalUserForAdapter>;
-
-    delete(args: { where: { id: string } }): Promise<InternalUserForAdapter>;
   };
 
   account: {
@@ -200,6 +198,23 @@ function mapAccountFields(account: Record<string, unknown>) {
 }
 
 // ---------------------------------------------------------------------------
+// Error classification helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Checks if an error is a Prisma "record not found" error (P2025).
+ * Does not import PrismaClient — inspects error shape only.
+ */
+function isRecordNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025'
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Adapter Factory
 // ---------------------------------------------------------------------------
 
@@ -261,10 +276,10 @@ export function createAuthjsAdapter(db: AuthjsAdapterDB): Adapter {
       return mapInternalUserToAdapterUser(updated);
     },
 
-    async deleteUser(userId) {
-      const deleted = await db.user.delete({ where: { id: userId } });
-      return mapInternalUserToAdapterUser(deleted);
-    },
+    // deleteUser is intentionally omitted.
+    // Internal User lifecycle is application-owned; Auth.js must not
+    // perform destructive user deletion. The Adapter interface declares
+    // deleteUser as optional.
 
     // -----------------------------------------------------------------------
     // Account methods
@@ -327,9 +342,13 @@ export function createAuthjsAdapter(db: AuthjsAdapterDB): Adapter {
           },
         });
         return deleted;
-      } catch {
-        // Token not found — return null per Auth.js adapter contract
-        return null;
+      } catch (error: unknown) {
+        // Return null only for record-not-found (Prisma P2025).
+        // All other DB errors must propagate for safety.
+        if (isRecordNotFoundError(error)) {
+          return null;
+        }
+        throw error;
       }
     },
 

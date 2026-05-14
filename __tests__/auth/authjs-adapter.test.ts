@@ -18,7 +18,6 @@ function createMockDB(): AuthjsAdapterDB {
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
     },
     account: {
       create: vi.fn(),
@@ -321,9 +320,12 @@ describe('createAuthjsAdapter', () => {
       expect(result).toEqual(tokenData);
     });
 
-    it('returns null when token not found', async () => {
+    it('returns null when token not found (P2025)', async () => {
+      const prismaNotFound = Object.assign(new Error('Record not found'), {
+        code: 'P2025',
+      });
       (db.verificationToken.delete as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error('Record not found'),
+        prismaNotFound,
       );
 
       const result = await adapter.useVerificationToken!({
@@ -332,6 +334,20 @@ describe('createAuthjsAdapter', () => {
       });
 
       expect(result).toBeNull();
+    });
+
+    it('re-throws non-P2025 database errors', async () => {
+      const dbError = new Error('Connection refused');
+      (db.verificationToken.delete as ReturnType<typeof vi.fn>).mockRejectedValue(
+        dbError,
+      );
+
+      await expect(
+        adapter.useVerificationToken!({
+          identifier: 'test@test.com',
+          token: 'test-token',
+        }),
+      ).rejects.toThrow('Connection refused');
     });
   });
 
@@ -347,6 +363,21 @@ describe('createAuthjsAdapter', () => {
       expect(adapter.getSessionAndUser).toBeUndefined();
       expect(adapter.updateSession).toBeUndefined();
       expect(adapter.deleteSession).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // deleteUser safety
+  // -------------------------------------------------------------------------
+
+  describe('deleteUser safety', () => {
+    it('deleteUser is omitted from the adapter', () => {
+      expect(adapter.deleteUser).toBeUndefined();
+    });
+
+    it('internal User lifecycle remains application-owned', () => {
+      // db.user should not expose delete at all in the adapter DB interface
+      expect(db.user).not.toHaveProperty('delete');
     });
   });
 });
