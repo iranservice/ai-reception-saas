@@ -12,7 +12,7 @@ Applied the accepted auth provider persistence schema migration. Added `User.ema
 ## Files Modified
 
 - `prisma/schema.prisma` — added `emailVerified` to User, added `accounts` relation, added `Account` model, added `VerificationToken` model
-- `__tests__/foundation/prisma-schema.test.ts` — added 21 new schema structure tests for auth provider persistence
+- `__tests__/foundation/prisma-schema.test.ts` — added 22 new schema structure tests for auth provider persistence
 
 ## Schema Changes
 
@@ -43,6 +43,7 @@ Applied the accepted auth provider persistence schema migration. Added `User.ema
 
 - Exact Auth.js model name (not `AuthVerificationToken`) per TASK-0029 spike finding
 - No `id` field — uses composite unique key `[identifier, token]`
+- Index on `expires` for efficient expired token cleanup
 - Mapped to `verification_tokens` table
 - Fields: identifier, token, expires
 
@@ -61,12 +62,16 @@ Additive-only migration:
 1. `ALTER TABLE users ADD COLUMN email_verified TIMESTAMP(3)`
 2. `CREATE TABLE accounts (...)`
 3. `CREATE TABLE verification_tokens (...)`
-4. Create indexes and unique constraints
+4. Create indexes and unique constraints:
+   - `accounts_user_id_idx`
+   - `accounts_provider_provider_account_id_key` (unique)
+   - `verification_tokens_identifier_token_key` (unique)
+   - `verification_tokens_expires_idx`
 5. Add FK with CASCADE delete
 
 ## Tests Added
 
-21 new tests in `prisma-schema.test.ts`:
+22 new tests in `prisma-schema.test.ts`:
 - Account and VerificationToken model existence
 - Account and VerificationToken table mappings
 - Account and VerificationToken unique constraints
@@ -81,6 +86,7 @@ Additive-only migration:
 - Account Auth.js required fields
 - VerificationToken composite key (no @id)
 - VerificationToken fields
+- VerificationToken expires index for cleanup queries
 - Exact naming (Account not AuthAccount)
 - Exact naming (VerificationToken not AuthVerificationToken)
 - No Auth.js database Session (JWT strategy)
@@ -94,7 +100,7 @@ Additive-only migration:
 | `pnpm prisma:generate` | ✅ |
 | `pnpm typecheck` | ✅ |
 | `pnpm lint` | ✅ (0 errors, 3 warnings) |
-| `pnpm test` | ✅ 561 passed, 7 skipped |
+| `pnpm test` | ✅ 562 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Issues Found
