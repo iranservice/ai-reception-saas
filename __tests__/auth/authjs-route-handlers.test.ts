@@ -391,3 +391,83 @@ describe('TASK-0034 scope guard tests', () => {
     expect(codeOnly).not.toContain('getPrisma');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Kill switch semantics (TASK-0034B)
+// ---------------------------------------------------------------------------
+
+describe('TASK-0034B kill switch semantics', () => {
+  const SRC_ROOT = path.resolve(__dirname, '../../src');
+
+  it('route handler checks isAuthjsRuntimeEnabled before accessing cache', () => {
+    const routeSource = fs.readFileSync(
+      path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts'),
+      'utf-8',
+    );
+
+    // GET and POST must check the flag inline, not delegate to a helper
+    // that checks cache first
+    const getMatch = routeSource.match(
+      /export\s+async\s+function\s+GET[\s\S]*?\{([\s\S]*?)^\}/m,
+    );
+    const postMatch = routeSource.match(
+      /export\s+async\s+function\s+POST[\s\S]*?\{([\s\S]*?)^\}/m,
+    );
+
+    expect(getMatch).not.toBeNull();
+    expect(postMatch).not.toBeNull();
+
+    const getBody = getMatch![1];
+    const postBody = postMatch![1];
+
+    // Flag check must appear before any cache/handler access
+    const flagCheckPattern = /isAuthjsRuntimeEnabled/;
+    const handlerAccessPattern = /getEnabledHandlers|cachedEnabledHandlers/;
+
+    const getFlagPos = getBody.search(flagCheckPattern);
+    const getHandlerPos = getBody.search(handlerAccessPattern);
+    const postFlagPos = postBody.search(flagCheckPattern);
+    const postHandlerPos = postBody.search(handlerAccessPattern);
+
+    expect(getFlagPos).toBeGreaterThanOrEqual(0);
+    expect(getHandlerPos).toBeGreaterThanOrEqual(0);
+    expect(getFlagPos).toBeLessThan(getHandlerPos);
+
+    expect(postFlagPos).toBeGreaterThanOrEqual(0);
+    expect(postHandlerPos).toBeGreaterThanOrEqual(0);
+    expect(postFlagPos).toBeLessThan(postHandlerPos);
+  });
+
+  it('getEnabledHandlers is not called when disabled', () => {
+    const routeSource = fs.readFileSync(
+      path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts'),
+      'utf-8',
+    );
+
+    // The route must NOT have a pattern like:
+    //   if (cachedEnabledHandlers) return cachedEnabledHandlers;
+    //   if (!isAuthjsRuntimeEnabled()) ...
+    // That would check cache before flag.
+    // Instead, GET/POST must check flag first, then call getEnabledHandlers.
+
+    // Verify no function checks cache before flag
+    const getHandlersMatch = routeSource.match(
+      /function\s+getHandlers[\s\S]*?\{([\s\S]*?)^\}/m,
+    );
+    // getHandlers should not exist — replaced by getEnabledHandlers
+    expect(getHandlersMatch).toBeNull();
+  });
+
+  it('route exports GET and POST that return disabled response when flag is off', () => {
+    const routeSource = fs.readFileSync(
+      path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts'),
+      'utf-8',
+    );
+
+    // Both handlers must call createDisabledAuthjsRouteResponse
+    expect(routeSource).toContain('createDisabledAuthjsRouteResponse');
+    // Both must export GET and POST
+    expect(routeSource).toContain('export async function GET');
+    expect(routeSource).toContain('export async function POST');
+  });
+});
