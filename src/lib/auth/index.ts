@@ -1,7 +1,8 @@
 /**
  * Auth.js Adapter Boundary — Public API
  *
- * Re-exports the adapter factory, user mapping utilities, and constants.
+ * Re-exports the adapter factory, user mapping utilities, feature gate,
+ * runtime config factory, and constants.
  * This module is the single entry point for Auth.js adapter functionality.
  *
  * IMPORTANT: This module must not be imported by:
@@ -33,3 +34,25 @@ export {
   type InternalUserUpdateInput,
   type AdapterUserOutput,
 } from './authjs-user-mapping';
+
+export {
+  AUTHJS_RUNTIME_FEATURE_FLAG,
+  isAuthjsRuntimeEnabled,
+  assertAuthjsRuntimeEnabled,
+  AuthjsRuntimeDisabledError,
+} from './authjs-feature-gate';
+
+export {
+  createAuthjsConfig,
+  tryCreateAuthjsConfig,
+  validateAuthjsSecret,
+  validateProviders,
+  normalizeProviderDescriptor,
+  AUTHJS_SESSION_STRATEGY,
+  AUTHJS_MISSING_SECRET_MESSAGE,
+  AUTHJS_EMPTY_PROVIDERS_WARNING,
+  type AuthjsProviderDescriptor,
+  type AuthjsRequiredSecrets,
+  type AuthjsConfigInput,
+  type AuthjsConfigOutput,
+} from './authjs-runtime-config';
