@@ -2,12 +2,13 @@
  * Auth.js Adapter Boundary — Public API
  *
  * Re-exports the adapter factory, user mapping utilities, feature gate,
- * runtime config factory, and constants.
+ * runtime config factory, Prisma DB bridge, route handler factory,
+ * and constants.
  * This module is the single entry point for Auth.js adapter functionality.
  *
- * IMPORTANT: This module must not be imported by:
- * - src/app/** (no runtime auth wiring yet)
- * - src/domains/** (adapter boundary is isolated)
+ * IMPORTANT: Only src/app/api/auth/[...nextauth]/route.ts should
+ * import route handler utilities. src/domains/** must not import
+ * this module.
  *
  * @module
  */
@@ -56,3 +57,18 @@ export {
   type AuthjsConfigInput,
   type AuthjsConfigOutput,
 } from './authjs-runtime-config';
+
+export {
+  createAuthjsAdapterDb,
+  type AuthjsPrismaClient,
+} from './authjs-prisma-db';
+
+export {
+  createAuthjsRouteHandlers,
+  createDisabledAuthjsRouteResponse,
+  AUTHJS_ROUTE_DISABLED_CODE,
+  AUTHJS_ROUTE_DISABLED_MESSAGE,
+  AUTHJS_ROUTE_DISABLED_STATUS,
+  type AuthjsRouteHandlerInput,
+  type AuthjsRouteHandlerOutput,
+} from './authjs-route-handlers';
