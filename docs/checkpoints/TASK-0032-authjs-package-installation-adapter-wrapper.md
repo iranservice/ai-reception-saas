@@ -10,7 +10,7 @@ Installed Auth.js packages and added an isolated adapter wrapper boundary withou
 - `src/lib/auth/authjs-user-mapping.ts` — pure mapping functions for email, name, image normalization
 - `src/lib/auth/index.ts` — barrel re-export
 - `__tests__/auth/authjs-user-mapping.test.ts` — 28 user mapping tests
-- `__tests__/auth/authjs-adapter.test.ts` — 28 adapter behavior, isolation, and scope guard tests
+- `__tests__/auth/authjs-adapter.test.ts` — 31 adapter behavior, safety, isolation, and scope guard tests
 - `docs/checkpoints/TASK-0032-authjs-package-installation-adapter-wrapper.md` — this file
 
 ## Files Modified
@@ -35,6 +35,9 @@ Installed Auth.js packages and added an isolated adapter wrapper boundary withou
 - Database sessions disabled — session methods omitted from adapter (Adapter interface declares them optional)
 - Internal Session not used by adapter
 - DB interface injected — adapter does not import `getPrisma()` or instantiate `PrismaClient`
+- Canonical internal User deletion is not exposed; `deleteUser` is omitted because internal User lifecycle is application-owned
+- `useVerificationToken` returns `null` only for Prisma record-not-found error code `P2025`
+- `useVerificationToken` rethrows non-P2025 database errors
 
 ## Runtime Scope
 
@@ -57,7 +60,7 @@ Installed Auth.js packages and added an isolated adapter wrapper boundary withou
 - Create input: required email, name fallback, image→avatarUrl, no id pass-through, no status/role/tenant
 - Update input: image→avatarUrl, name update, null handling, no status/role/tenant
 
-### Adapter behavior tests (28 tests)
+### Adapter behavior tests (31 tests)
 
 - createUser writes normalized data
 - getUser returns adapter shape
@@ -67,8 +70,11 @@ Installed Auth.js packages and added an isolated adapter wrapper boundary withou
 - getUserByAccount returns linked user
 - unlinkAccount deletes by composite key
 - createVerificationToken creates row
-- useVerificationToken deletes and returns, null on not-found
+- useVerificationToken deletes and returns, null for P2025 not-found only
+- useVerificationToken rethrows non-P2025 database errors
 - Database session methods omitted
+- deleteUser is omitted from adapter
+- internal User lifecycle remains application-owned
 - createUnsupportedDatabaseSessionMethod throws correct message
 - Module isolation: no getPrisma, no PrismaClient import, no route imports
 - Scope guards: no next-auth in app/domains, no middleware, no auth routes, no schema changes, no migrations
@@ -82,12 +88,12 @@ Installed Auth.js packages and added an isolated adapter wrapper boundary withou
 | `pnpm prisma:generate` | ✅ |
 | `pnpm typecheck` | ✅ |
 | `pnpm lint` | ✅ (0 errors, 3 warnings) |
-| `pnpm test` | ✅ 618 passed, 7 skipped |
+| `pnpm test` | ✅ 621 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Issues Found
 
-None.
+Adapter safety review found two pre-merge issues: deleteUser exposed internal User deletion, and useVerificationToken swallowed all DB errors. Both were fixed before merge approval.
 
 ## Decision
 
