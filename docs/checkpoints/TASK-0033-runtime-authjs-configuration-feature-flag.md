@@ -8,7 +8,7 @@ Added isolated runtime Auth.js configuration primitives gated behind a feature f
 
 - `src/lib/auth/authjs-feature-gate.ts` — feature flag utility with guard assertion and typed error
 - `src/lib/auth/authjs-runtime-config.ts` — config factory with secret/provider validation
-- `__tests__/auth/authjs-runtime-config.test.ts` — 51 tests covering feature gate, validation, config factory, and scope guards
+- `__tests__/auth/authjs-runtime-config.test.ts` — 56 tests covering feature gate, validation, config factory, and scope guards
 - `docs/checkpoints/TASK-0033-runtime-authjs-configuration-feature-flag.md` — this file
 
 ## Files Modified
@@ -18,10 +18,10 @@ Added isolated runtime Auth.js configuration primitives gated behind a feature f
 ## Feature Gate
 
 - Environment variable: `ENABLE_AUTHJS_RUNTIME`
-- Accepts `'true'` or `'1'` (case-insensitive)
-- All other values (including undefined) return `false`
-- `isAuthjsRuntimeEnabled()` — non-throwing check
-- `assertAuthjsRuntimeEnabled(operation)` — throws `AuthjsRuntimeDisabledError` when disabled
+- Only the exact string `"true"` enables the flag
+- No trimming, no case normalization, no numeric truthy (`"1"`, `"TRUE"`, `" true "` all return false)
+- `isAuthjsRuntimeEnabled(env?)` — non-throwing check, accepts optional env injection for testing
+- `assertAuthjsRuntimeEnabled(operation, env?)` — throws `AuthjsRuntimeDisabledError` when disabled
 - Feature gate is read at call time, not import time
 
 ## Runtime Config
@@ -52,16 +52,19 @@ Added isolated runtime Auth.js configuration primitives gated behind a feature f
 - No request-context resolver changes
 - No existing API route changes
 
-## Tests Added (51 tests)
+## Tests Added (56 tests)
 
-### Feature gate tests (13 tests)
+### Feature gate tests (18 tests)
 
 - Feature flag constant equals `ENABLE_AUTHJS_RUNTIME`
-- Returns false for: undefined, empty, "false", "0", arbitrary string
-- Returns true for: "true", "TRUE", "True" with whitespace, "1"
+- Returns false for: undefined, empty, "false", "0", "1", "TRUE", "True", " true " (whitespace), "yes", arbitrary string
+- Returns true only for exact `"true"`
+- Defaults to process.env when no env provided
 - Assert throws `AuthjsRuntimeDisabledError` when disabled
 - Assert includes operation name and flag name in error
 - Assert does not throw when enabled
+- Assert throws for "TRUE" (strict)
+- Assert throws for "1" (strict)
 
 ### Secret validation tests (5 tests)
 
@@ -111,12 +114,12 @@ Added isolated runtime Auth.js configuration primitives gated behind a feature f
 | `pnpm prisma:generate` | ✅ |
 | `pnpm typecheck` | ✅ |
 | `pnpm lint` | ✅ (0 errors, 4 warnings) |
-| `pnpm test` | ✅ 672 passed, 7 skipped |
+| `pnpm test` | ✅ 677 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Issues Found
 
-None.
+Feature flag strictness review found the gate was too permissive (accepted "TRUE", "1", whitespace). Fixed to require exact `"true"` only. Added env injection for testability.
 
 ## Decision
 

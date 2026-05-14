@@ -9,6 +9,9 @@
  * It does not wire Auth.js into routes, middleware, or request context.
  * Route-wiring is deferred to a future task.
  *
+ * Strictness: Only the exact string `"true"` enables the flag.
+ * No trimming, no case normalization, no numeric truthy semantics.
+ *
  * @module
  */
 
@@ -18,7 +21,7 @@
 
 /**
  * Environment variable name that controls Auth.js runtime enablement.
- * Set to `'true'` (case-insensitive) to enable.
+ * Set to exactly `"true"` to enable.
  */
 export const AUTHJS_RUNTIME_FEATURE_FLAG = 'ENABLE_AUTHJS_RUNTIME' as const;
 
@@ -29,15 +32,16 @@ export const AUTHJS_RUNTIME_FEATURE_FLAG = 'ENABLE_AUTHJS_RUNTIME' as const;
 /**
  * Returns `true` if the Auth.js runtime feature flag is enabled.
  *
- * Reads `process.env.ENABLE_AUTHJS_RUNTIME` at call time.
- * Accepts `'true'` or `'1'` (case-insensitive). All other values
- * (including missing/undefined) return `false`.
+ * Only the exact string `"true"` enables the flag.
+ * No trimming, no case normalization, no numeric truthy.
+ *
+ * @param env - Environment record to read from (defaults to process.env).
+ *              Accepts injection for testing without mutating process.env.
  */
-export function isAuthjsRuntimeEnabled(): boolean {
-  const value = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-  if (value === undefined || value === null) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === 'true' || normalized === '1';
+export function isAuthjsRuntimeEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[AUTHJS_RUNTIME_FEATURE_FLAG] === 'true';
 }
 
 // ---------------------------------------------------------------------------
@@ -60,10 +64,15 @@ export class AuthjsRuntimeDisabledError extends Error {
 /**
  * Asserts that Auth.js runtime is enabled. Throws if disabled.
  *
+ * @param operation - Name of the operation being guarded
+ * @param env - Environment record to read from (defaults to process.env)
  * @throws {AuthjsRuntimeDisabledError} if feature flag is not enabled
  */
-export function assertAuthjsRuntimeEnabled(operation: string): void {
-  if (!isAuthjsRuntimeEnabled()) {
+export function assertAuthjsRuntimeEnabled(
+  operation: string,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (!isAuthjsRuntimeEnabled(env)) {
     throw new AuthjsRuntimeDisabledError(operation);
   }
 }

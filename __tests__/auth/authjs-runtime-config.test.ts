@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -45,16 +45,6 @@ function validConfigInput(overrides?: Partial<AuthjsConfigInput>): AuthjsConfigI
 // ---------------------------------------------------------------------------
 
 describe('authjs-feature-gate', () => {
-  const originalEnv = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-    } else {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = originalEnv;
-    }
-  });
-
   describe('AUTHJS_RUNTIME_FEATURE_FLAG', () => {
     it('equals ENABLE_AUTHJS_RUNTIME', () => {
       expect(AUTHJS_RUNTIME_FEATURE_FLAG).toBe('ENABLE_AUTHJS_RUNTIME');
@@ -63,76 +53,96 @@ describe('authjs-feature-gate', () => {
 
   describe('isAuthjsRuntimeEnabled', () => {
     it('returns false when env var is undefined', () => {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-      expect(isAuthjsRuntimeEnabled()).toBe(false);
+      expect(isAuthjsRuntimeEnabled({})).toBe(false);
     });
 
     it('returns false when env var is empty', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = '';
-      expect(isAuthjsRuntimeEnabled()).toBe(false);
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: '' })).toBe(false);
     });
 
     it('returns false when env var is "false"', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'false';
-      expect(isAuthjsRuntimeEnabled()).toBe(false);
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: 'false' })).toBe(false);
     });
 
     it('returns false when env var is "0"', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = '0';
-      expect(isAuthjsRuntimeEnabled()).toBe(false);
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: '0' })).toBe(false);
+    });
+
+    it('returns false when env var is "1"', () => {
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: '1' })).toBe(false);
+    });
+
+    it('returns false when env var is "TRUE"', () => {
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: 'TRUE' })).toBe(false);
+    });
+
+    it('returns false when env var is "True"', () => {
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: 'True' })).toBe(false);
+    });
+
+    it('returns false when env var is " true " (with whitespace)', () => {
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: ' true ' })).toBe(false);
+    });
+
+    it('returns false when env var is "yes"', () => {
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: 'yes' })).toBe(false);
     });
 
     it('returns false when env var is arbitrary string', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'maybe';
-      expect(isAuthjsRuntimeEnabled()).toBe(false);
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: 'maybe' })).toBe(false);
     });
 
-    it('returns true when env var is "true"', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-      expect(isAuthjsRuntimeEnabled()).toBe(true);
+    it('returns true only for exact "true"', () => {
+      expect(isAuthjsRuntimeEnabled({ ENABLE_AUTHJS_RUNTIME: 'true' })).toBe(true);
     });
 
-    it('returns true when env var is "TRUE"', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'TRUE';
-      expect(isAuthjsRuntimeEnabled()).toBe(true);
-    });
-
-    it('returns true when env var is "True" with whitespace', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = '  True  ';
-      expect(isAuthjsRuntimeEnabled()).toBe(true);
-    });
-
-    it('returns true when env var is "1"', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = '1';
-      expect(isAuthjsRuntimeEnabled()).toBe(true);
+    it('defaults to process.env when no env provided', () => {
+      // With no ENABLE_AUTHJS_RUNTIME in process.env, should return false
+      const saved = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+      try {
+        expect(isAuthjsRuntimeEnabled()).toBe(false);
+      } finally {
+        if (saved !== undefined) process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = saved;
+      }
     });
   });
 
   describe('assertAuthjsRuntimeEnabled', () => {
     it('throws AuthjsRuntimeDisabledError when disabled', () => {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-      expect(() => assertAuthjsRuntimeEnabled('testOp')).toThrow(
+      expect(() => assertAuthjsRuntimeEnabled('testOp', {})).toThrow(
         AuthjsRuntimeDisabledError,
       );
     });
 
     it('includes operation name in error message', () => {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-      expect(() => assertAuthjsRuntimeEnabled('createAuthjsConfig')).toThrow(
-        /createAuthjsConfig/,
-      );
+      expect(() =>
+        assertAuthjsRuntimeEnabled('createAuthjsConfig', {}),
+      ).toThrow(/createAuthjsConfig/);
     });
 
     it('includes feature flag name in error message', () => {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-      expect(() => assertAuthjsRuntimeEnabled('test')).toThrow(
+      expect(() => assertAuthjsRuntimeEnabled('test', {})).toThrow(
         /ENABLE_AUTHJS_RUNTIME/,
       );
     });
 
     it('does not throw when enabled', () => {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-      expect(() => assertAuthjsRuntimeEnabled('testOp')).not.toThrow();
+      expect(() =>
+        assertAuthjsRuntimeEnabled('testOp', { ENABLE_AUTHJS_RUNTIME: 'true' }),
+      ).not.toThrow();
+    });
+
+    it('throws for "TRUE" (strict)', () => {
+      expect(() =>
+        assertAuthjsRuntimeEnabled('testOp', { ENABLE_AUTHJS_RUNTIME: 'TRUE' }),
+      ).toThrow(AuthjsRuntimeDisabledError);
+    });
+
+    it('throws for "1" (strict)', () => {
+      expect(() =>
+        assertAuthjsRuntimeEnabled('testOp', { ENABLE_AUTHJS_RUNTIME: '1' }),
+      ).toThrow(AuthjsRuntimeDisabledError);
     });
   });
 });
@@ -300,72 +310,87 @@ describe('validateProviders', () => {
 // ---------------------------------------------------------------------------
 
 describe('createAuthjsConfig', () => {
-  const originalEnv = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-    } else {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = originalEnv;
-    }
-  });
+  const enabledEnv = { ENABLE_AUTHJS_RUNTIME: 'true' };
 
   it('throws AuthjsRuntimeDisabledError when feature flag is off', () => {
+    const saved = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
     delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-    expect(() => createAuthjsConfig(validConfigInput())).toThrow(
-      AuthjsRuntimeDisabledError,
-    );
+    try {
+      expect(() => createAuthjsConfig(validConfigInput())).toThrow(
+        AuthjsRuntimeDisabledError,
+      );
+    } finally {
+      if (saved !== undefined) process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = saved;
+    }
   });
 
   it('throws when AUTH_SECRET is missing', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    expect(() =>
-      createAuthjsConfig(
-        validConfigInput({ secrets: { authSecret: '' } }),
-      ),
-    ).toThrow(AUTHJS_MISSING_SECRET_MESSAGE);
+    try {
+      expect(() =>
+        createAuthjsConfig(
+          validConfigInput({ secrets: { authSecret: '' } }),
+        ),
+      ).toThrow(AUTHJS_MISSING_SECRET_MESSAGE);
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 
   it('creates valid config when enabled with valid input', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    const adapter = mockAdapter();
-    const result = createAuthjsConfig({
-      adapter,
-      providers: [],
-      secrets: { authSecret: 'my-secret-value' },
-      baseUrl: 'https://app.example.com',
-      debug: true,
-    });
+    try {
+      const adapter = mockAdapter();
+      const result = createAuthjsConfig({
+        adapter,
+        providers: [],
+        secrets: { authSecret: 'my-secret-value' },
+        baseUrl: 'https://app.example.com',
+        debug: true,
+      });
 
-    expect(result.adapter).toBe(adapter);
-    expect(result.providers).toEqual([]);
-    expect(result.session).toEqual({ strategy: 'jwt' });
-    expect(result.secret).toBe('my-secret-value');
-    expect(result.basePath).toBe('https://app.example.com');
-    expect(result.debug).toBe(true);
-    expect(result.featureGateEnabled).toBe(true);
+      expect(result.adapter).toBe(adapter);
+      expect(result.providers).toEqual([]);
+      expect(result.session).toEqual({ strategy: 'jwt' });
+      expect(result.secret).toBe('my-secret-value');
+      expect(result.basePath).toBe('https://app.example.com');
+      expect(result.debug).toBe(true);
+      expect(result.featureGateEnabled).toBe(true);
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 
   it('enforces JWT session strategy', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    const result = createAuthjsConfig(validConfigInput());
-    expect(result.session.strategy).toBe(AUTHJS_SESSION_STRATEGY);
-    expect(result.session.strategy).toBe('jwt');
+    try {
+      const result = createAuthjsConfig(validConfigInput());
+      expect(result.session.strategy).toBe(AUTHJS_SESSION_STRATEGY);
+      expect(result.session.strategy).toBe('jwt');
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 
   it('defaults debug to false', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    const result = createAuthjsConfig(validConfigInput());
-    expect(result.debug).toBe(false);
+    try {
+      const result = createAuthjsConfig(validConfigInput());
+      expect(result.debug).toBe(false);
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 
   it('passes through providers array', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    const providers = [
-      { id: 'google', name: 'Google', type: 'oauth' },
-    ];
-    const result = createAuthjsConfig(validConfigInput({ providers }));
-    expect(result.providers).toBe(providers);
+    try {
+      const providers = [{ id: 'google', name: 'Google', type: 'oauth' }];
+      const result = createAuthjsConfig(validConfigInput({ providers }));
+      expect(result.providers).toBe(providers);
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 });
 
@@ -374,37 +399,40 @@ describe('createAuthjsConfig', () => {
 // ---------------------------------------------------------------------------
 
 describe('tryCreateAuthjsConfig', () => {
-  const originalEnv = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-    } else {
-      process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = originalEnv;
-    }
-  });
-
   it('returns null when feature flag is off (does not throw)', () => {
+    const saved = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
     delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-    const result = tryCreateAuthjsConfig(validConfigInput());
-    expect(result).toBeNull();
+    try {
+      const result = tryCreateAuthjsConfig(validConfigInput());
+      expect(result).toBeNull();
+    } finally {
+      if (saved !== undefined) process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = saved;
+    }
   });
 
   it('returns config when feature flag is on', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    const result = tryCreateAuthjsConfig(validConfigInput());
-    expect(result).not.toBeNull();
-    expect(result!.featureGateEnabled).toBe(true);
-    expect(result!.session.strategy).toBe('jwt');
+    try {
+      const result = tryCreateAuthjsConfig(validConfigInput());
+      expect(result).not.toBeNull();
+      expect(result!.featureGateEnabled).toBe(true);
+      expect(result!.session.strategy).toBe('jwt');
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 
   it('still throws on invalid secret even when enabled', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    expect(() =>
-      tryCreateAuthjsConfig(
-        validConfigInput({ secrets: { authSecret: '' } }),
-      ),
-    ).toThrow(AUTHJS_MISSING_SECRET_MESSAGE);
+    try {
+      expect(() =>
+        tryCreateAuthjsConfig(
+          validConfigInput({ secrets: { authSecret: '' } }),
+        ),
+      ).toThrow(AUTHJS_MISSING_SECRET_MESSAGE);
+    } finally {
+      delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
+    }
   });
 });
 
@@ -495,7 +523,6 @@ describe('TASK-0033 scope guard tests', () => {
   });
 
   it('no .env or .env.example files were changed', () => {
-    // These files should not exist or should not contain ENABLE_AUTHJS_RUNTIME
     const envFile = path.join(PROJECT_ROOT, '.env');
     const envExample = path.join(PROJECT_ROOT, '.env.example');
 
