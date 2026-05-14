@@ -69,6 +69,8 @@ Additive-only migration:
    - `verification_tokens_expires_idx`
 5. Add FK with CASCADE delete
 
+Migration SQL was committed as an additive Prisma migration file and reviewed. No production or remote database was used.
+
 ## Tests Added
 
 22 new tests in `prisma-schema.test.ts`:
@@ -109,11 +111,11 @@ None.
 
 ## Decision
 
-Schema migration applied per accepted TASK-0030 proposal and TASK-0030B adapter contract. Uses exact Auth.js model names, JWT session strategy, internal Session unchanged, tenant/authz models unchanged.
+Accepted auth provider persistence schema migration: User.emailVerified, Account, and VerificationToken added; internal Session and tenant/authz models unchanged.
 
 ## Recommended Next Task
 
-[Phase 2] TASK-0032: Install Auth.js packages and create provider spike config
+[Phase 2] TASK-0032: Auth.js package installation and adapter wrapper implementation
 
 ## Scope Confirmation
 
