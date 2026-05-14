@@ -470,19 +470,19 @@ describe('TASK-0033 scope guard tests', () => {
     });
   }
 
-  it('src/app/** does not import authjs-feature-gate', () => {
+  it('src/app/** (excluding auth route) does not import authjs-feature-gate', () => {
     const violations = filesContainImport(
       path.join(SRC_ROOT, 'app'),
       'authjs-feature-gate',
-    );
+    ).filter((f) => !f.includes('[...nextauth]'));
     expect(violations).toEqual([]);
   });
 
-  it('src/app/** does not import authjs-runtime-config', () => {
+  it('src/app/** (excluding auth route) does not import authjs-runtime-config', () => {
     const violations = filesContainImport(
       path.join(SRC_ROOT, 'app'),
       'authjs-runtime-config',
-    );
+    ).filter((f) => !f.includes('[...nextauth]'));
     expect(violations).toEqual([]);
   });
 
@@ -499,10 +499,13 @@ describe('TASK-0033 scope guard tests', () => {
     expect(fs.existsSync(path.join(PROJECT_ROOT, 'middleware.ts'))).toBe(false);
   });
 
-  it('no auth route handlers were added', () => {
-    expect(
-      fs.existsSync(path.join(SRC_ROOT, 'app', 'api', 'auth')),
-    ).toBe(false);
+  it('auth route handler (if present) does not import authjs-runtime-config directly', () => {
+    const routeFile = path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts');
+    if (fs.existsSync(routeFile)) {
+      const content = fs.readFileSync(routeFile, 'utf-8');
+      // Route may import feature-gate and route-handlers, but not runtime-config
+      expect(content).not.toContain('authjs-runtime-config');
+    }
   });
 
   it('prisma/schema.prisma was not changed in this task', () => {

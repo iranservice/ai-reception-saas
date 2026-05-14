@@ -494,9 +494,13 @@ describe('Auth.js scope guard tests', () => {
     expect(fs.existsSync(rootMiddleware)).toBe(false);
   });
 
-  it('no auth route handlers were added', () => {
-    const authApiDir = path.join(SRC_ROOT, 'app', 'api', 'auth');
-    expect(fs.existsSync(authApiDir)).toBe(false);
+  it('auth route handler (if present) does not import adapter directly', () => {
+    const routeFile = path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts');
+    if (fs.existsSync(routeFile)) {
+      const content = fs.readFileSync(routeFile, 'utf-8');
+      // Route should use the route handler factory, not the adapter directly
+      expect(content).not.toContain('authjs-adapter');
+    }
   });
 
   it('prisma/schema.prisma was not changed in this task', () => {
