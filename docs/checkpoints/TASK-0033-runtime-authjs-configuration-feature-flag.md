@@ -123,11 +123,11 @@ Feature flag strictness review found the gate was too permissive (accepted "TRUE
 
 ## Decision
 
-Accepted Auth.js runtime configuration primitives behind feature flag: config factory validated, JWT strategy enforced, adapter integrated, and route wiring deferred.
+Accepted feature-gated Auth.js runtime configuration boundary; route wiring, providers, and request-context integration remain deferred.
 
 ## Recommended Next Task
 
-TASK-0034: Wire Auth.js route handler behind feature flag
+[Phase 2] TASK-0034: Auth.js route wiring behind runtime feature flag
 
 ## Scope Confirmation
 
