@@ -148,8 +148,8 @@ Wired Auth.js Next.js route handler behind the existing strict runtime feature f
 
 ## Decision
 
-Accepted feature-gated Auth.js route wiring boundary; real providers, middleware, and request-context integration remain deferred.
+Accepted Auth.js route wiring behind runtime feature flag; runtime remains disabled by default and provider/request-context integration remains deferred.
 
 ## Recommended Next Task
 
-[Phase 3] TASK-0035: Configure first OAuth provider behind runtime feature flag
+[Phase 2] TASK-0035: Auth.js provider configuration design and environment contract
