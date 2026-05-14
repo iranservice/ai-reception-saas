@@ -2,8 +2,8 @@
 // Prisma Schema
 //
 // PostgreSQL datasource with Prisma Client generator.
-// Implements the tenant, identity, membership, session, and audit
-// foundation as designed in TASK-0005.
+// Implements the tenant, identity, membership, session, audit
+// foundation (TASK-0005) and auth provider persistence (TASK-0031).
 //
 // NOTE: Prisma 7+ requires datasource URL to be configured in
 // prisma.config.ts, not in this schema file.
@@ -66,20 +66,22 @@ enum AuditResult {
 // ===========================================================================
 
 model User {
-  id        String     @id @default(uuid()) @db.Uuid
-  email     String     @unique
-  name      String
-  locale    String     @default("en")
-  status    UserStatus @default(ACTIVE)
-  avatarUrl String?    @map("avatar_url")
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  id            String     @id @default(uuid()) @db.Uuid
+  email         String     @unique
+  name          String
+  locale        String     @default("en")
+  status        UserStatus @default(ACTIVE)
+  avatarUrl     String?    @map("avatar_url")
+  emailVerified DateTime?  @map("email_verified")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
 
   sessions           Session[]
   memberships        BusinessMembership[]
   createdBusinesses  Business[]           @relation("BusinessCreator")
   invitedMemberships BusinessMembership[] @relation("MembershipInviter")
   auditEvents        AuditEvent[]         @relation("AuditActor")
+  accounts           Account[]
 
   @@map("users")
 }
@@ -148,6 +150,42 @@ model BusinessMembership {
   @@index([businessId, role])
   @@index([businessId, status])
   @@map("business_memberships")
+}
+
+// ===========================================================================
+// Models — Auth Provider Persistence (TASK-0031)
+// ===========================================================================
+
+model Account {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  refreshToken      String?  @map("refresh_token") @db.Text
+  accessToken       String?  @map("access_token") @db.Text
+  expiresAt         Int?     @map("expires_at")
+  tokenType         String?  @map("token_type")
+  scope             String?
+  idToken           String?  @map("id_token") @db.Text
+  sessionState      String?  @map("session_state")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 // ===========================================================================
