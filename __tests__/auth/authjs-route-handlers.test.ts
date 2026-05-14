@@ -22,6 +22,8 @@ vi.mock('next-auth', () => ({
 
 import {
   createAuthjsRouteHandlers,
+  createDisabledAuthjsRouteResponse,
+  AUTHJS_ROUTE_DISABLED_CODE,
   AUTHJS_ROUTE_DISABLED_MESSAGE,
   AUTHJS_ROUTE_DISABLED_STATUS,
   type AuthjsRouteHandlerInput,
@@ -117,20 +119,25 @@ describe('createAuthjsRouteHandlers — disabled', () => {
     expect(result.enabled).toBe(false);
   });
 
-  it('GET returns 404 with correct error message', async () => {
+  it('GET returns 501 with structured error body', async () => {
     const { GET } = createAuthjsRouteHandlers(validInput());
     const response = await GET(new Request('http://localhost/api/auth/session') as never);
     expect(response.status).toBe(AUTHJS_ROUTE_DISABLED_STATUS);
+    expect(response.status).toBe(501);
     const body = await response.json();
-    expect(body.error).toBe(AUTHJS_ROUTE_DISABLED_MESSAGE);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe(AUTHJS_ROUTE_DISABLED_CODE);
+    expect(body.error.message).toBe(AUTHJS_ROUTE_DISABLED_MESSAGE);
   });
 
-  it('POST returns 404 with correct error message', async () => {
+  it('POST returns 501 with structured error body', async () => {
     const { POST } = createAuthjsRouteHandlers(validInput());
     const response = await POST(new Request('http://localhost/api/auth/signin', { method: 'POST' }) as never);
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(501);
     const body = await response.json();
-    expect(body.error).toBe(AUTHJS_ROUTE_DISABLED_MESSAGE);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('AUTHJS_RUNTIME_DISABLED');
+    expect(body.error.message).toBe(AUTHJS_ROUTE_DISABLED_MESSAGE);
   });
 
   it('does not initialize NextAuth when disabled', async () => {
@@ -151,6 +158,34 @@ describe('createAuthjsRouteHandlers — disabled', () => {
     process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = '1';
     const result = createAuthjsRouteHandlers(validInput());
     expect(result.enabled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createDisabledAuthjsRouteResponse (shared helper)
+// ---------------------------------------------------------------------------
+
+describe('createDisabledAuthjsRouteResponse', () => {
+  it('returns 501 status', () => {
+    const response = createDisabledAuthjsRouteResponse();
+    expect(response.status).toBe(501);
+  });
+
+  it('returns structured error body', async () => {
+    const response = createDisabledAuthjsRouteResponse();
+    const body = await response.json();
+    expect(body).toEqual({
+      ok: false,
+      error: {
+        code: 'AUTHJS_RUNTIME_DISABLED',
+        message: 'Auth.js runtime is disabled.',
+      },
+    });
+  });
+
+  it('returns application/json content-type', () => {
+    const response = createDisabledAuthjsRouteResponse();
+    expect(response.headers.get('Content-Type')).toBe('application/json');
   });
 });
 

@@ -5,10 +5,10 @@
  * gated behind the runtime feature flag.
  *
  * When `ENABLE_AUTHJS_RUNTIME !== "true"`, the handlers return a
- * 404 JSON response, making the auth endpoint invisible.
+ * 501 JSON response indicating the runtime is disabled.
  *
  * Design decisions:
- * - Feature-gated: route returns 404 when disabled
+ * - Feature-gated: route returns 501 when disabled
  * - JWT session strategy enforced
  * - Adapter is wired through createAuthjsAdapter + createAuthjsAdapterDb
  * - No real providers configured (empty array by default)
@@ -31,10 +31,13 @@ import { validateAuthjsSecret, AUTHJS_SESSION_STRATEGY } from './authjs-runtime-
 // Constants
 // ---------------------------------------------------------------------------
 
-export const AUTHJS_ROUTE_DISABLED_MESSAGE =
-  'Auth.js runtime is not enabled.' as const;
+export const AUTHJS_ROUTE_DISABLED_CODE =
+  'AUTHJS_RUNTIME_DISABLED' as const;
 
-export const AUTHJS_ROUTE_DISABLED_STATUS = 404 as const;
+export const AUTHJS_ROUTE_DISABLED_MESSAGE =
+  'Auth.js runtime is disabled.' as const;
+
+export const AUTHJS_ROUTE_DISABLED_STATUS = 501 as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,16 +72,39 @@ export interface AuthjsRouteHandlerOutput {
 }
 
 // ---------------------------------------------------------------------------
-// Disabled handler
+// Disabled response helper (single source of truth)
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a 404 JSON response when Auth.js runtime is disabled.
+ * Creates a 501 JSON response when Auth.js runtime is disabled.
+ *
+ * Response body:
+ * ```json
+ * {
+ *   "ok": false,
+ *   "error": {
+ *     "code": "AUTHJS_RUNTIME_DISABLED",
+ *     "message": "Auth.js runtime is disabled."
+ *   }
+ * }
+ * ```
+ *
+ * Exported so that route.ts can use the same response shape
+ * without duplicating construction logic.
  */
-function createDisabledResponse(): Response {
+export function createDisabledAuthjsRouteResponse(): Response {
   return new Response(
-    JSON.stringify({ error: AUTHJS_ROUTE_DISABLED_MESSAGE }),
-    { status: AUTHJS_ROUTE_DISABLED_STATUS, headers: { 'Content-Type': 'application/json' } },
+    JSON.stringify({
+      ok: false,
+      error: {
+        code: AUTHJS_ROUTE_DISABLED_CODE,
+        message: AUTHJS_ROUTE_DISABLED_MESSAGE,
+      },
+    }),
+    {
+      status: AUTHJS_ROUTE_DISABLED_STATUS,
+      headers: { 'Content-Type': 'application/json' },
+    },
   );
 }
 
@@ -96,7 +122,7 @@ function createDisabledResponse(): Response {
  * - Returns real GET/POST handlers
  *
  * When disabled:
- * - Returns 404 handlers (no Auth.js initialization)
+ * - Returns 501 handlers (no Auth.js initialization)
  *
  * @param input - Route handler configuration
  */
@@ -106,8 +132,8 @@ export function createAuthjsRouteHandlers(
   if (!isAuthjsRuntimeEnabled()) {
     return {
       enabled: false,
-      GET: async () => createDisabledResponse(),
-      POST: async () => createDisabledResponse(),
+      GET: async () => createDisabledAuthjsRouteResponse(),
+      POST: async () => createDisabledAuthjsRouteResponse(),
     };
   }
 

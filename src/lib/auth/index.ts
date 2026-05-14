@@ -65,6 +65,8 @@ export {
 
 export {
   createAuthjsRouteHandlers,
+  createDisabledAuthjsRouteResponse,
+  AUTHJS_ROUTE_DISABLED_CODE,
   AUTHJS_ROUTE_DISABLED_MESSAGE,
   AUTHJS_ROUTE_DISABLED_STATUS,
   type AuthjsRouteHandlerInput,
