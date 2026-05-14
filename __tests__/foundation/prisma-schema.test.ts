@@ -335,6 +335,12 @@ describe('Prisma Schema — Auth Provider Persistence (TASK-0031)', () => {
     expect(vtModel![1]).toContain('expires');
   });
 
+  it('VerificationToken has expires index for cleanup queries', () => {
+    const vtModel = schema.match(/model\s+VerificationToken\s*\{([\s\S]+?)\}/);
+    expect(vtModel).not.toBeNull();
+    expect(vtModel![1]).toContain('@@index([expires])');
+  });
+
   it('uses exact Auth.js model name Account (not AuthAccount)', () => {
     expect(modelExists('Account')).toBe(true);
     expect(modelDoesNotExist('AuthAccount')).toBe(true);

@@ -47,5 +47,8 @@ CREATE UNIQUE INDEX "accounts_provider_provider_account_id_key" ON "accounts"("p
 -- CreateIndex: verification_tokens(identifier, token) UNIQUE
 CREATE UNIQUE INDEX "verification_tokens_identifier_token_key" ON "verification_tokens"("identifier", "token");
 
+-- CreateIndex: verification_tokens(expires)
+CREATE INDEX "verification_tokens_expires_idx" ON "verification_tokens"("expires");
+
 -- AddForeignKey: accounts.user_id -> users.id (CASCADE)
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
