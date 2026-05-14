@@ -113,6 +113,14 @@ describe('Prisma Schema — Required Models', () => {
   it('defines AuditEvent model', () => {
     expect(modelExists('AuditEvent')).toBe(true);
   });
+
+  it('defines Account model (Auth.js provider persistence)', () => {
+    expect(modelExists('Account')).toBe(true);
+  });
+
+  it('defines VerificationToken model (Auth.js provider persistence)', () => {
+    expect(modelExists('VerificationToken')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -165,6 +173,14 @@ describe('Prisma Schema — Table Mappings', () => {
   it('maps Business to businesses', () => {
     expect(schema).toContain('@@map("businesses")');
   });
+
+  it('maps Account to accounts', () => {
+    expect(schema).toContain('@@map("accounts")');
+  });
+
+  it('maps VerificationToken to verification_tokens', () => {
+    expect(schema).toContain('@@map("verification_tokens")');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -197,6 +213,14 @@ describe('Prisma Schema — Constraints', () => {
     expect(businessModel![1]).toContain('slug');
     expect(businessModel![1]).toContain('@unique');
   });
+
+  it('has unique constraint on Account provider + providerAccountId', () => {
+    expect(schema).toContain('@@unique([provider, providerAccountId])');
+  });
+
+  it('has unique constraint on VerificationToken identifier + token', () => {
+    expect(schema).toContain('@@unique([identifier, token])');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -214,5 +238,138 @@ describe('Prisma Schema — No Provider-Specific Fields', () => {
 
   it('does not contain auth0Id', () => {
     expect(schema).not.toContain('auth0Id');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auth provider persistence tests (TASK-0031)
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Auth Provider Persistence (TASK-0031)', () => {
+  it('User has emailVerified nullable DateTime field', () => {
+    const userModel = schema.match(/model\s+User\s*\{([\s\S]+?)\}/);
+    expect(userModel).not.toBeNull();
+    expect(userModel![1]).toContain('emailVerified');
+    expect(userModel![1]).toContain('DateTime?');
+    expect(userModel![1]).toContain('@map("email_verified")');
+  });
+
+  it('User has accounts relation to Account[]', () => {
+    const userModel = schema.match(/model\s+User\s*\{([\s\S]+?)\}/);
+    expect(userModel).not.toBeNull();
+    expect(userModel![1]).toContain('accounts');
+    expect(userModel![1]).toContain('Account[]');
+  });
+
+  it('User does not have image field (uses avatarUrl)', () => {
+    const userModel = schema.match(/model\s+User\s*\{([\s\S]+?)\}/);
+    expect(userModel).not.toBeNull();
+    // Must not contain standalone 'image' field — avatarUrl is canonical
+    expect(userModel![1]).not.toMatch(/^\s+image\s/m);
+  });
+
+  it('User.name remains required (not nullable)', () => {
+    const userModel = schema.match(/model\s+User\s*\{([\s\S]+?)\}/);
+    expect(userModel).not.toBeNull();
+    const nameLine = userModel![1].match(/^\s+name\s+.*/m);
+    expect(nameLine).not.toBeNull();
+    expect(nameLine![0]).toContain('String');
+    expect(nameLine![0]).not.toContain('String?');
+  });
+
+  it('User.email remains required (not nullable)', () => {
+    const userModel = schema.match(/model\s+User\s*\{([\s\S]+?)\}/);
+    expect(userModel).not.toBeNull();
+    const emailLine = userModel![1].match(/^\s+email\s+.*/m);
+    expect(emailLine).not.toBeNull();
+    expect(emailLine![0]).toContain('String');
+    expect(emailLine![0]).not.toContain('String?');
+  });
+
+  it('Account model uses UUID primary key', () => {
+    const accountModel = schema.match(/model\s+Account\s*\{([\s\S]+?)\}/);
+    expect(accountModel).not.toBeNull();
+    expect(accountModel![1]).toContain('@db.Uuid');
+    expect(accountModel![1]).toContain('@default(uuid())');
+  });
+
+  it('Account has onDelete: Cascade to User', () => {
+    const accountModel = schema.match(/model\s+Account\s*\{([\s\S]+?)\}/);
+    expect(accountModel).not.toBeNull();
+    expect(accountModel![1]).toContain('onDelete: Cascade');
+  });
+
+  it('Account has userId index', () => {
+    const accountModel = schema.match(/model\s+Account\s*\{([\s\S]+?)\}/);
+    expect(accountModel).not.toBeNull();
+    expect(accountModel![1]).toContain('@@index([userId])');
+  });
+
+  it('Account has all required Auth.js fields', () => {
+    const accountModel = schema.match(/model\s+Account\s*\{([\s\S]+?)\}/);
+    expect(accountModel).not.toBeNull();
+    const body = accountModel![1];
+    expect(body).toContain('type');
+    expect(body).toContain('provider');
+    expect(body).toContain('providerAccountId');
+    expect(body).toContain('refreshToken');
+    expect(body).toContain('accessToken');
+    expect(body).toContain('expiresAt');
+    expect(body).toContain('tokenType');
+    expect(body).toContain('scope');
+    expect(body).toContain('idToken');
+    expect(body).toContain('sessionState');
+  });
+
+  it('VerificationToken has no id field (uses composite key)', () => {
+    const vtModel = schema.match(/model\s+VerificationToken\s*\{([\s\S]+?)\}/);
+    expect(vtModel).not.toBeNull();
+    expect(vtModel![1]).not.toContain('@id');
+  });
+
+  it('VerificationToken has identifier, token, and expires fields', () => {
+    const vtModel = schema.match(/model\s+VerificationToken\s*\{([\s\S]+?)\}/);
+    expect(vtModel).not.toBeNull();
+    expect(vtModel![1]).toContain('identifier');
+    expect(vtModel![1]).toContain('token');
+    expect(vtModel![1]).toContain('expires');
+  });
+
+  it('VerificationToken has expires index for cleanup queries', () => {
+    const vtModel = schema.match(/model\s+VerificationToken\s*\{([\s\S]+?)\}/);
+    expect(vtModel).not.toBeNull();
+    expect(vtModel![1]).toContain('@@index([expires])');
+  });
+
+  it('uses exact Auth.js model name Account (not AuthAccount)', () => {
+    expect(modelExists('Account')).toBe(true);
+    expect(modelDoesNotExist('AuthAccount')).toBe(true);
+  });
+
+  it('uses exact Auth.js model name VerificationToken (not AuthVerificationToken)', () => {
+    expect(modelExists('VerificationToken')).toBe(true);
+    expect(modelDoesNotExist('AuthVerificationToken')).toBe(true);
+  });
+
+  it('does not add Auth.js database Session model (JWT strategy)', () => {
+    // There should be exactly one Session model — the internal one
+    // AuthSession should not exist
+    expect(modelDoesNotExist('AuthSession')).toBe(true);
+    // Internal Session should exist with tokenHash (our internal model)
+    const sessionModel = schema.match(/model\s+Session\s*\{([\s\S]+?)\}/);
+    expect(sessionModel).not.toBeNull();
+    expect(sessionModel![1]).toContain('tokenHash');
+  });
+
+  it('internal Session model remains unchanged', () => {
+    const sessionModel = schema.match(/model\s+Session\s*\{([\s\S]+?)\}/);
+    expect(sessionModel).not.toBeNull();
+    const body = sessionModel![1];
+    expect(body).toContain('tokenHash');
+    expect(body).toContain('expiresAt');
+    expect(body).toContain('revokedAt');
+    expect(body).toContain('ipAddress');
+    expect(body).toContain('userAgent');
+    expect(body).toContain('@@map("sessions")');
   });
 });
