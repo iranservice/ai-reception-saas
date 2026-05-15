@@ -58,8 +58,11 @@ None. This is a documentation-only task.
 
 | Check | Result |
 |---|---|
+| `pnpm install` | ✅ |
+| `pnpm prisma:format` | ✅ |
+| `pnpm prisma:generate` | ✅ |
 | `pnpm typecheck` | ✅ |
-| `pnpm lint` | ✅ |
+| `pnpm lint` | ✅ (0 errors, 5 warnings) |
 | `pnpm test` | ✅ 769 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
@@ -82,8 +85,8 @@ None. This is a documentation-only task.
 
 ## Decision
 
-Accepted local smoke-test runbook for Auth.js Google OAuth; no runtime changes, all instructions reference accepted environment contract and feature flag semantics.
+Accepted local Google OAuth smoke-test runbook; production rollout, UI, middleware, and request-context integration remain deferred.
 
 ## Recommended Next Task
 
-[Phase 3] TASK-0038: Auth.js session callback and JWT token enrichment design
+[Phase 2] TASK-0038: Auth.js request-context resolver design for provider-backed sessions
