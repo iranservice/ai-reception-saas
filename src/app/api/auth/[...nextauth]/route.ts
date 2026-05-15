@@ -20,6 +20,7 @@
  * TASK-0034: Route wiring only — no middleware, no request-context integration.
  * TASK-0034B: Fix kill switch — flag checked before cache on every request.
  * TASK-0036: Wire Google provider behind ENABLE_AUTHJS_GOOGLE_PROVIDER flag.
+ * TASK-0039: Route handler factory now exposes auth() via setAuthjsAuth for request-context resolver.
  */
 
 import { NextRequest } from 'next/server';

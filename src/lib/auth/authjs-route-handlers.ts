@@ -26,6 +26,7 @@ import { isAuthjsRuntimeEnabled } from './authjs-feature-gate';
 import { createAuthjsAdapter } from './authjs-adapter';
 import { createAuthjsAdapterDb, type AuthjsPrismaClient } from './authjs-prisma-db';
 import { validateAuthjsSecret, AUTHJS_SESSION_STRATEGY } from './authjs-runtime-config';
+import { setAuthjsAuth } from './authjs-runtime';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -69,6 +70,8 @@ export interface AuthjsRouteHandlerOutput {
   GET: (req: NextRequest) => Promise<Response>;
   /** POST handler for [...nextauth] route */
   POST: (req: NextRequest) => Promise<Response>;
+  /** Auth.js session reader — null when disabled */
+  auth: ((...args: unknown[]) => unknown) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +137,7 @@ export function createAuthjsRouteHandlers(
       enabled: false,
       GET: async () => createDisabledAuthjsRouteResponse(),
       POST: async () => createDisabledAuthjsRouteResponse(),
+      auth: null,
     };
   }
 
@@ -154,9 +158,13 @@ export function createAuthjsRouteHandlers(
     debug: input.debug ?? false,
   });
 
+  // Register auth for request-context adapter access
+  setAuthjsAuth(nextAuth.auth);
+
   return {
     enabled: true,
     GET: nextAuth.handlers.GET,
     POST: nextAuth.handlers.POST,
+    auth: nextAuth.auth,
   };
 }

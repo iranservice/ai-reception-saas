@@ -85,3 +85,10 @@ export {
   type GoogleProviderCredentials,
   type GoogleProviderEnv,
 } from './authjs-google-provider';
+
+export {
+  getAuthjsAuth,
+  setAuthjsAuth,
+  resetAuthjsAuthForTests,
+  type AuthjsAuthFunction,
+} from './authjs-runtime';
