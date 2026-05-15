@@ -27,26 +27,33 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (!isAuthjsRuntimeEnabled()) {
     return createDisabledAuthjsRouteResponse();
   }
-  return getEnabledHandlers().GET(req);
+  return (await getEnabledHandlers()).GET(req);
 }
 ```
 
-`getEnabledHandlers()` is only called when the flag is confirmed enabled.
+`getEnabledHandlers()` is only called when the flag is confirmed enabled. Changed from `require()` to `await import()` for proper vitest module interception in behavioral tests.
 
 ## Files Modified
 
-- `src/app/api/auth/[...nextauth]/route.ts` — kill switch fix
-- `__tests__/auth/authjs-route-handlers.test.ts` — 3 kill switch semantics tests
+- `src/app/api/auth/[...nextauth]/route.ts` — kill switch fix + require → dynamic import
+- `__tests__/auth/authjs-route-handlers.test.ts` — 3 source-scan tests + 2 behavioral regression tests
 
 ## Files Created
 
 - `docs/checkpoints/TASK-0034B-authjs-route-feature-flag-kill-switch.md` — this file
 
-## Tests Added (3 tests)
+## Tests Added (5 tests)
+
+### Source-scan tests (3 tests)
 
 - Route handler checks `isAuthjsRuntimeEnabled` before accessing cache
 - `getHandlers` function no longer exists (replaced by `getEnabledHandlers`)
 - Route exports GET and POST that return disabled response when flag is off
+
+### Behavioral regression tests (2 tests)
+
+- GET behavioral regression: cached enabled handler does not bypass later disabled flag
+- POST behavioral regression: cached enabled handler does not bypass later disabled flag
 
 ## Checks Run
 
@@ -54,13 +61,14 @@ export async function GET(req: NextRequest): Promise<Response> {
 |---|---|
 | `pnpm typecheck` | ✅ |
 | `pnpm lint` | ✅ (0 errors, 4 warnings) |
-| `pnpm test` | ✅ 708 passed, 7 skipped |
+| `pnpm test` | ✅ 710 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Scope
 
 - ✅ Kill switch semantics fixed
 - ✅ Flag checked before cache on every request
+- ✅ Behavioral regression tests prove kill switch works
 - ✅ No middleware
 - ✅ No provider changes
 - ✅ No schema/migration changes
@@ -69,7 +77,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
 ## Decision
 
-Accepted kill switch fix; feature flag is now a true per-request gate that cannot be bypassed by cached handlers.
+Accepted Auth.js route kill-switch fix: runtime feature flag is checked before cached enabled handlers on every request.
 
 ## Recommended Next Task
 

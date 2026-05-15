@@ -39,12 +39,11 @@ let cachedEnabledHandlers: AuthjsRouteHandlerOutput | null = null;
  * Returns cached enabled handlers, creating them lazily on first call.
  * MUST only be called after confirming isAuthjsRuntimeEnabled() is true.
  */
-function getEnabledHandlers(): AuthjsRouteHandlerOutput {
+async function getEnabledHandlers(): Promise<AuthjsRouteHandlerOutput> {
   if (cachedEnabledHandlers) return cachedEnabledHandlers;
 
-  // Lazy import to avoid build-time DATABASE_URL requirement
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { getPrisma } = require('@/lib/prisma') as { getPrisma: () => import('@prisma/client').PrismaClient };
+  // Dynamic import to avoid build-time DATABASE_URL requirement
+  const { getPrisma } = await import('@/lib/prisma');
 
   cachedEnabledHandlers = createAuthjsRouteHandlers({
     prisma: getPrisma(),
@@ -66,7 +65,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     return createDisabledAuthjsRouteResponse();
   }
 
-  return getEnabledHandlers().GET(req);
+  return (await getEnabledHandlers()).GET(req);
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -74,5 +73,5 @@ export async function POST(req: NextRequest): Promise<Response> {
     return createDisabledAuthjsRouteResponse();
   }
 
-  return getEnabledHandlers().POST(req);
+  return (await getEnabledHandlers()).POST(req);
 }
