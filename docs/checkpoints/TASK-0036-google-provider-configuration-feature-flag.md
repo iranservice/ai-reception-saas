@@ -54,6 +54,7 @@ Exports:
 ### Route Handler Change
 
 - `providers: []` replaced with `providers: createAuthjsProviders()`
+- `createAuthjsProviders()` called before `getPrisma()` for fail-fast credential validation
 - When provider flag is disabled, `createAuthjsProviders()` returns `[]` (identical to prior behavior)
 - When provider flag is enabled, returns `[Google({ clientId, clientSecret })]`
 - Kill switch semantics preserved — runtime flag checked before cache on every request
@@ -72,12 +73,12 @@ Exports:
 |---|---|
 | `pnpm typecheck` | ✅ |
 | `pnpm lint` | ✅ (0 errors, 5 warnings) |
-| `pnpm test` | ✅ 763 passed, 7 skipped |
+| `pnpm test` | ✅ 769 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Test Coverage
 
-53 new tests in `__tests__/auth/authjs-google-provider.test.ts`:
+53 new tests in `__tests__/auth/authjs-google-provider.test.ts` + 6 new behavioral route integration tests in `__tests__/auth/authjs-route-handlers.test.ts`:
 
 | Test Group | Count | What It Covers |
 |---|---|---|
@@ -88,6 +89,7 @@ Exports:
 | `createAuthjsProviders` | 9 | Disabled flags (5 variants), enabled with valid creds, missing creds, flag-disabled skips validation |
 | Type exports | 2 | Shape verification |
 | Scope guards | 14 | File existence, imports, isolation, route wiring, barrel exports, domain isolation, no middleware, no schema, no migration, no package changes |
+| Route integration (TASK-0036) | 6 | Runtime disabled ignores provider flag, empty providers when provider disabled, flag strictness, valid Google wiring, missing credentials throw, kill-switch with Google cached |
 
 ## Architecture Debt Closed
 
@@ -102,7 +104,7 @@ None.
 
 ## Decision
 
-Accepted Google OAuth provider configuration behind provider feature flag, with runtime and provider flags as separate gates.
+Accepted Google OAuth provider configuration behind provider feature flag, with runtime and provider flags as separate gates and behavioral route integration tests verifying all matrix states.
 
 ## Recommended Next Task
 
@@ -124,5 +126,6 @@ Accepted Google OAuth provider configuration behind provider feature flag, with 
 - ✅ No adapter changes
 - ✅ No session strategy changes
 - ✅ No workflow changes
-- ✅ Existing tests unchanged
+- ✅ Existing tests unchanged (prior tests still pass)
 - ✅ Kill switch semantics preserved
+- ✅ Route optimized: provider validation before DB connection

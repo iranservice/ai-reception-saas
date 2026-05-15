@@ -591,3 +591,213 @@ describe('TASK-0034B behavioral kill-switch regression', () => {
     expect(mockGetPrisma).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Behavioral Google provider route integration tests (TASK-0036)
+// ---------------------------------------------------------------------------
+
+describe('TASK-0036 behavioral Google provider route integration', () => {
+  const ROUTE_MODULE = '../../src/app/api/auth/[...nextauth]/route';
+
+  let mockGetPrisma: ReturnType<typeof vi.fn>;
+  let mockNextAuth: ReturnType<typeof vi.fn>;
+  let mockGoogleProvider: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+
+    // Mock NextAuth — returns known GET/POST handlers
+    mockNextAuth = vi.fn(() => ({
+      handlers: {
+        GET: vi.fn(async () => new Response('auth-get')),
+        POST: vi.fn(async () => new Response('auth-post')),
+      },
+      auth: vi.fn(),
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+    }));
+    vi.doMock('next-auth', () => ({ default: mockNextAuth }));
+
+    // Mock Google provider
+    mockGoogleProvider = vi.fn((opts: { clientId: string; clientSecret: string }) => ({
+      id: 'google',
+      name: 'Google',
+      type: 'oidc',
+      clientId: opts.clientId,
+      clientSecret: opts.clientSecret,
+    }));
+    vi.doMock('next-auth/providers/google', () => ({ default: mockGoogleProvider }));
+
+    // Mock @/lib/prisma — returns fake Prisma-like client
+    mockGetPrisma = vi.fn(() => ({
+      user: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+      account: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
+      verificationToken: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
+    }));
+    vi.doMock('@/lib/prisma', () => ({ getPrisma: mockGetPrisma }));
+
+    // Clean env
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+    delete process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER;
+    delete process.env.AUTH_SECRET;
+    delete process.env.AUTH_GOOGLE_ID;
+    delete process.env.AUTH_GOOGLE_SECRET;
+  });
+
+  afterAll(() => {
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+    delete process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER;
+    delete process.env.AUTH_SECRET;
+    delete process.env.AUTH_GOOGLE_ID;
+    delete process.env.AUTH_GOOGLE_SECRET;
+  });
+
+  it('runtime disabled does not build Google providers even when provider flag is set', async () => {
+    // Runtime disabled, provider enabled, valid Google env
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+    process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER = 'true';
+    process.env.AUTH_GOOGLE_ID = 'test-google-client-id';
+    process.env.AUTH_GOOGLE_SECRET = 'test-google-client-secret';
+
+    const route = await import(ROUTE_MODULE);
+    const response = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+
+    expect(response.status).toBe(501);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('AUTHJS_RUNTIME_DISABLED');
+
+    // Nothing should be initialized
+    expect(mockGoogleProvider).not.toHaveBeenCalled();
+    expect(mockNextAuth).not.toHaveBeenCalled();
+    expect(mockGetPrisma).not.toHaveBeenCalled();
+  });
+
+  it('runtime enabled + provider disabled passes empty providers', async () => {
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    delete process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER;
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+
+    const route = await import(ROUTE_MODULE);
+    const response = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+
+    // Delegates to fake Auth.js GET handler
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toBe('auth-get');
+
+    // NextAuth called with empty providers
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    const config = mockNextAuth.mock.calls[0][0] as Record<string, unknown>;
+    expect(config.providers).toEqual([]);
+
+    // Google provider never called
+    expect(mockGoogleProvider).not.toHaveBeenCalled();
+  });
+
+  it('runtime enabled + provider flag "TRUE" (strict) behaves as disabled', async () => {
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER = 'TRUE'; // strict: not "true"
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+
+    const route = await import(ROUTE_MODULE);
+    const response = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    const config = mockNextAuth.mock.calls[0][0] as Record<string, unknown>;
+    expect(config.providers).toEqual([]);
+
+    // Google provider never called — strict flag semantics
+    expect(mockGoogleProvider).not.toHaveBeenCalled();
+  });
+
+  it('runtime enabled + provider enabled + valid Google env passes Google provider', async () => {
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER = 'true';
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+    process.env.AUTH_GOOGLE_ID = 'test-google-client-id.apps.googleusercontent.com';
+    process.env.AUTH_GOOGLE_SECRET = 'test-google-client-secret-value';
+
+    const route = await import(ROUTE_MODULE);
+    const response = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+
+    // Delegates to fake Auth.js GET handler
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toBe('auth-get');
+
+    // Google provider called with credentials
+    expect(mockGoogleProvider).toHaveBeenCalledTimes(1);
+    expect(mockGoogleProvider).toHaveBeenCalledWith({
+      clientId: 'test-google-client-id.apps.googleusercontent.com',
+      clientSecret: 'test-google-client-secret-value',
+    });
+
+    // NextAuth called with Google provider in providers array
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    const config = mockNextAuth.mock.calls[0][0] as Record<string, unknown>;
+    const providers = config.providers as unknown[];
+    expect(providers).toHaveLength(1);
+    expect((providers[0] as Record<string, unknown>).id).toBe('google');
+  });
+
+  it('runtime enabled + provider enabled + missing Google env throws', async () => {
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER = 'true';
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+    // AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET intentionally not set
+
+    const route = await import(ROUTE_MODULE);
+    await expect(
+      route.GET(new Request('http://localhost/api/auth/session')),
+    ).rejects.toThrow(/AUTH_GOOGLE_ID/);
+
+    // Google provider and NextAuth should NOT have been called
+    expect(mockGoogleProvider).not.toHaveBeenCalled();
+    expect(mockNextAuth).not.toHaveBeenCalled();
+  });
+
+  it('kill-switch still works after Google provider was cached', async () => {
+    // Step 1: Enable everything
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    process.env.ENABLE_AUTHJS_GOOGLE_PROVIDER = 'true';
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+    process.env.AUTH_GOOGLE_ID = 'kill-switch-test-id';
+    process.env.AUTH_GOOGLE_SECRET = 'kill-switch-test-secret';
+
+    const route = await import(ROUTE_MODULE);
+
+    // Step 2: First GET initializes and caches handlers with Google
+    const enabledResponse = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+    expect(enabledResponse.status).toBe(200);
+    expect(mockGoogleProvider).toHaveBeenCalledTimes(1);
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+
+    // Step 3: Disable runtime flag (cached handlers with Google exist)
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+
+    // Step 4: Second GET must return 501 despite cached Google handlers
+    const disabledResponse = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+    expect(disabledResponse.status).toBe(501);
+    const body = await disabledResponse.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('AUTHJS_RUNTIME_DISABLED');
+
+    // Step 5: No additional initialization calls
+    expect(mockGoogleProvider).toHaveBeenCalledTimes(1);
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+  });
+});

@@ -506,7 +506,7 @@ describe('TASK-0036 scope guard tests', () => {
     expect(source).toContain('authjs-google-provider');
   });
 
-  it('route handler passes createAuthjsProviders() to providers', () => {
+  it('route handler calls createAuthjsProviders before getPrisma (fail-fast)', () => {
     const source = fs.readFileSync(
       path.join(
         SRC_ROOT,
@@ -518,7 +518,12 @@ describe('TASK-0036 scope guard tests', () => {
       ),
       'utf-8',
     );
-    expect(source).toContain('providers: createAuthjsProviders()');
+    // createAuthjsProviders() must appear before getPrisma in getEnabledHandlers
+    const providerPos = source.indexOf('createAuthjsProviders()');
+    const prismaPos = source.indexOf('getPrisma()');
+    expect(providerPos).toBeGreaterThanOrEqual(0);
+    expect(prismaPos).toBeGreaterThanOrEqual(0);
+    expect(providerPos).toBeLessThan(prismaPos);
   });
 
   it('route handler does not hardcode providers: []', () => {

@@ -44,13 +44,17 @@ let cachedEnabledHandlers: AuthjsRouteHandlerOutput | null = null;
 async function getEnabledHandlers(): Promise<AuthjsRouteHandlerOutput> {
   if (cachedEnabledHandlers) return cachedEnabledHandlers;
 
+  // Build providers first — fails fast if provider flag is enabled
+  // but credentials are missing (before any DB connection)
+  const providers = createAuthjsProviders();
+
   // Dynamic import to avoid build-time DATABASE_URL requirement
   const { getPrisma } = await import('@/lib/prisma');
 
   cachedEnabledHandlers = createAuthjsRouteHandlers({
     prisma: getPrisma(),
     authSecret: process.env.AUTH_SECRET ?? '',
-    providers: createAuthjsProviders(),
+    providers,
     basePath: '/api/auth',
     debug: process.env.NODE_ENV === 'development',
   });
