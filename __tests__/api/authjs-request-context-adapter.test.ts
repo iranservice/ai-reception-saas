@@ -227,11 +227,11 @@ describe('resolveAuthenticated — no session', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. auth(request) throws — infrastructure error→500
+// 5. auth(request) throws -- infrastructure unavailable 501
 // ---------------------------------------------------------------------------
 
-describe('resolveAuthenticated — auth throws', () => {
-  it('returns 500 INTERNAL_SERVER_ERROR when auth(request) throws', async () => {
+describe('resolveAuthenticated -- auth throws', () => {
+  it('returns 501 AUTH_CONTEXT_UNAVAILABLE when auth(request) throws', async () => {
     const auth = vi.fn(async () => {
       throw new Error('Auth.js internal error');
     }) as AuthjsSessionReader;
@@ -240,14 +240,14 @@ describe('resolveAuthenticated — auth throws', () => {
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.response.status).toBe(500);
+      expect(result.response.status).toBe(501);
       const body = await result.response.json();
-      expect(body.error.code).toBe('INTERNAL_SERVER_ERROR');
+      expect(body.error.code).toBe('AUTH_CONTEXT_UNAVAILABLE');
       expect(body.error.message).toBe(AUTHJS_SESSION_READ_FAILED_MESSAGE);
     }
   });
 
-  it('does not return 401 when auth throws (infrastructure != no-session)', async () => {
+  it('does not return 401 or 500 when auth throws', async () => {
     const auth = vi.fn(async () => {
       throw new TypeError('Cannot read properties of undefined');
     }) as AuthjsSessionReader;
@@ -256,8 +256,23 @@ describe('resolveAuthenticated — auth throws', () => {
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // Must be 500, NOT 401 — infrastructure failures are not “no session”
-      expect(result.response.status).toBe(500);
+      // Must be 501 -- infrastructure unavailable
+      expect(result.response.status).toBe(501);
+    }
+  });
+
+  it('does not expose thrown error message in response', async () => {
+    const auth = vi.fn(async () => {
+      throw new Error('sensitive internal detail');
+    }) as AuthjsSessionReader;
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+
+    const result = await adapter.resolveAuthenticated(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const body = await result.response.json();
+      expect(body.error.message).not.toContain('sensitive');
+      expect(body.error.message).toBe(AUTHJS_SESSION_READ_FAILED_MESSAGE);
     }
   });
 });

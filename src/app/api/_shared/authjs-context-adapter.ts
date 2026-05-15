@@ -218,19 +218,13 @@ export function createAuthjsRequestContextAdapter(
 
       // Read session from request cookies via Auth.js auth()
       // Infrastructure errors (runtime init, auth missing, auth throws)
-      // are surfaced as 500 INTERNAL_SERVER_ERROR — not masked as 401.
+      // are surfaced as AUTH_CONTEXT_UNAVAILABLE 501 — the session layer
+      // is unavailable, not the caller's fault.
       let session: AuthjsSessionLike | null;
       try {
         session = await auth(request);
       } catch {
-        return {
-          ok: false,
-          response: apiError(
-            'INTERNAL_SERVER_ERROR',
-            AUTHJS_SESSION_READ_FAILED_MESSAGE,
-            500,
-          ),
-        };
+        return unavailable(AUTHJS_SESSION_READ_FAILED_MESSAGE);
       }
 
       // No session → unauthenticated
