@@ -17,7 +17,7 @@ None. This is a documentation-only task.
 
 ### Proposed Resolver Architecture
 
-- New adapter factory: `createAuthjsRequestContextAdapter` accepting request-aware `auth(request)` and neutral `TenantMembershipResolver` interface
+- New adapter factory: `createAuthjsRequestContextAdapter` accepting request-aware `auth(request: Request)` and neutral `TenantMembershipResolver` interface (no concrete repository or factory names committed)
 - `resolveAuthenticated`: calls `auth(request)` → extracts `session.user.id` → returns `AuthenticatedUserRequestContext`
 - `resolveTenant`: combines authenticated user ID + tenant source (route param priority, then `x-business-id` header) + membership lookup → returns `TenantRequestContext`
 - `resolveSystem`: remains separate from Auth.js (API key / service token)
@@ -47,7 +47,7 @@ None. This is a documentation-only task.
 
 ### Open Design Questions
 
-1. Tenant identifier source order: resolved — route param `businessId` priority, then `x-business-id` header, mismatch is an error
+1. Tenant identifier source order: resolved — route param `businessId` first (business-scoped routes), `x-business-id` header only for generic routes, query/body not accepted, session/JWT must not silently choose, last-used tenant deferred; prevents confused-deputy and stale JWT claims
 2. JWT enrichment scope: cache membership in JWT vs per-request DB lookup (recommend per-request)
 3. System context production mechanism: API key vs service token vs mTLS (deferred)
 
@@ -83,8 +83,8 @@ None. This is a documentation-only task.
 
 ## Decision
 
-Accepted Auth.js request-context resolver design with request-aware session resolution, neutral tenant membership interface, and explicit tenant source priority; JWT callback prerequisite confirmed, production rollout deferred.
+Accepted Auth.js request-context resolver design defining: (1) strict tenant scope source order — route param `businessId` first, `x-business-id` header only for generic routes, query/body/JWT/last-used rejected or deferred; (2) neutral `TenantMembershipResolver` interface with no concrete repository or factory function names committed; (3) request-aware `auth(request)` session boundary enforced by adapter factory signature; (4) JWT callback prerequisite for `session.user.id` confirmed; (5) five-phase rollout plan with production deployment deferred.
 
 ## Recommended Next Task
 
-[Phase 2] TASK-0039: Auth.js JWT and session callback configuration for user ID enrichment
+[Phase 1] TASK-0039: Auth.js JWT and session callback configuration for user ID enrichment

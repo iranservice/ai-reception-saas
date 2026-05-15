@@ -191,18 +191,18 @@ export function getDefaultAuthContextAdapter(): AuthContextAdapter {
   if (isAuthjsRequestContextEnabled()) {
     return createAuthjsRequestContextAdapter({
       auth: getAuthjsAuth(),
-      tenantMembershipResolver: getTenantMembershipResolver(),
+      tenantMembershipResolver: /* wired by composition root — concrete name TBD */ ,
     });
   }
   return createDevHeaderAuthContextAdapter();
 }
 ```
 
-Where `getTenantMembershipResolver()` returns an implementation of `TenantMembershipResolver` backed by the current tenancy infrastructure. The concrete wiring is an implementation detail deferred to the implementation task.
+The `tenantMembershipResolver` is provided by the composition root at startup. The concrete factory function name, module location, and wiring strategy are implementation details deferred to the implementation task — this design commits only to the `TenantMembershipResolver` interface contract.
 
-### Auth.js `auth()` Access
+### Auth.js `auth(request)` — Request-Aware Session Reader
 
-The `auth()` function is returned by `NextAuth()` alongside the route handlers. It must be exposed from the route initialization path:
+The `auth` function is returned by `NextAuth()` alongside the route handlers. It must be exposed from the route initialization path:
 
 ```ts
 // In route.ts or a shared auth module:
@@ -210,7 +210,9 @@ const nextAuth: NextAuthResult = NextAuth({ ... });
 export const auth = nextAuth.auth;
 ```
 
-**Key constraint:** `auth()` is only available when `ENABLE_AUTHJS_RUNTIME === "true"`. If `ENABLE_AUTHJS_REQUEST_CONTEXT === "true"` but `ENABLE_AUTHJS_RUNTIME !== "true"`, the adapter must fail with a clear configuration error — not silently return unauthenticated.
+**Request-aware boundary:** `auth` is **not** a zero-argument function. It must always be called with the incoming `Request` so Auth.js can read the JWT session from the request's cookies. The adapter factory signature (`auth: (request: Request) => Promise<AutojsSession | null>`) enforces this — callers cannot accidentally invoke `auth()` without the request.
+
+**Key constraint:** `auth(request)` is only available when `ENABLE_AUTHJS_RUNTIME === "true"`. If `ENABLE_AUTHJS_REQUEST_CONTEXT === "true"` but `ENABLE_AUTHJS_RUNTIME !== "true"`, the adapter must fail with a clear configuration error — not silently return unauthenticated.
 
 ### Flag Dependency Matrix
 
@@ -409,4 +411,4 @@ Without this, `resolveAuthenticated` will always fail with `INVALID_AUTH_CONTEXT
 | Version | Date | Description |
 |---|---|---|
 | 1.0 | 2026-05-15 | Initial design — TASK-0038 |
-| 1.1 | 2026-05-15 | CTO review: fix tenant scope order, neutral resolver interface, request-aware auth |
+| 1.1 | 2026-05-15 | CTO review: strict tenant scope source order (route param > header, no query/body/JWT/last-used), neutral TenantMembershipResolver interface (no concrete factory names), request-aware auth(request) boundary, decision/next-task text corrections |
