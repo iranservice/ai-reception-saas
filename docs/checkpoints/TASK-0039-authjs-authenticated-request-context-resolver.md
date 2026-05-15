@@ -88,15 +88,18 @@ Request-context does NOT depend on the auth route being hit first.
 
 | Check | Result |
 |---|---|
+| `pnpm install` | ✅ |
+| `pnpm prisma:format` | ✅ |
+| `pnpm prisma:generate` | ✅ |
 | `pnpm typecheck` | ✅ |
 | `pnpm lint` | ✅ (0 errors, 7 warnings) |
-| `pnpm test` | ✅ All passed |
+| `pnpm test` | ✅ 811 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Decision
 
-Accepted: Auth.js authenticated request-context resolver implemented behind ENABLE_AUTHJS_REQUEST_CONTEXT and ENABLE_AUTHJS_RUNTIME dual feature flags with shared lazy runtime, strict AUTH_CONTEXT_UNAVAILABLE error contract, and token.sub session enrichment; tenant context, system context, and production rollout deferred.
+Accepted Auth.js authenticated request-context resolver behind feature flag; tenant/system context, middleware, and production rollout remain deferred.
 
 ## Recommended Next Task
 
-TASK-0040: Implement Auth.js tenant membership context resolver behind feature flag
+[Phase 2] TASK-0040: Implement Auth.js tenant request-context resolver with explicit business scope
