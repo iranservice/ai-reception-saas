@@ -8,13 +8,12 @@
 // JWT sessions. Tenant and system context resolution remain explicitly
 // unavailable and deferred to future tasks.
 //
-// This module does NOT import the Auth.js package directly. The Auth.js `auth`
-// function is injected via AuthjsRequestContextAdapterOptions.
+// This module does NOT import the Auth.js package directly. Session
+// reading is injected via AuthjsRequestContextAdapterOptions.
 //
 // TASK-0039: Auth.js authenticated request-context resolver.
 // ===========================================================================
 
-import { getAuthjsAuth } from '@/lib/auth/authjs-runtime';
 import {
   createAuthenticatedUserRequestContext,
   getRequestId,
@@ -86,12 +85,13 @@ function isRuntimeEnabled(
 }
 
 // ---------------------------------------------------------------------------
-// Session types (no Auth.js package import)
+// Session types (local to avoid importing authjs-runtime at module level)
 // ---------------------------------------------------------------------------
 
 /**
  * Minimal session shape matching Auth.js JWT session.
- * Used as the boundary type so this module does not depend on the Auth.js package.
+ * Duplicated locally so this module does not trigger loading the Auth.js
+ * package dependency chain at import time.
  */
 export interface AuthjsSessionLike {
   readonly user?: {
@@ -102,6 +102,10 @@ export interface AuthjsSessionLike {
   } | null;
   readonly expires?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Session reader type
+// ---------------------------------------------------------------------------
 
 /**
  * Function that reads an Auth.js session from a request.
@@ -161,8 +165,14 @@ function invalidAuth(
 // Error messages
 // ---------------------------------------------------------------------------
 
+export const AUTHJS_REQUEST_CONTEXT_NOT_ENABLED_MESSAGE =
+  'ENABLE_AUTHJS_REQUEST_CONTEXT is not enabled.';
+
 export const AUTHJS_RUNTIME_NOT_ENABLED_MESSAGE =
   'Auth.js runtime is not enabled. ENABLE_AUTHJS_REQUEST_CONTEXT requires ENABLE_AUTHJS_RUNTIME to also be enabled.';
+
+export const AUTHJS_SESSION_READ_FAILED_MESSAGE =
+  'Session read failed';
 
 export const AUTHJS_SESSION_MISSING_USER_ID_MESSAGE =
   'Auth.js session exists but is missing internal user ID (session.user.id). ' +
@@ -196,13 +206,31 @@ export function createAuthjsRequestContextAdapter(
     async resolveAuthenticated(
       request: Request,
     ): Promise<ContextResult<AuthenticatedUserRequestContext>> {
-      // Prerequisite: Auth.js runtime must be enabled
+      // Gate 1: ENABLE_AUTHJS_REQUEST_CONTEXT must be enabled
+      if (!isAuthjsRequestContextEnabled(env)) {
+        return unavailable(AUTHJS_REQUEST_CONTEXT_NOT_ENABLED_MESSAGE);
+      }
+
+      // Gate 2: Auth.js runtime must be enabled
       if (!isRuntimeEnabled(env)) {
         return unavailable(AUTHJS_RUNTIME_NOT_ENABLED_MESSAGE);
       }
 
       // Read session from request cookies via Auth.js auth()
-      const session = await auth(request);
+      // Catch thrown errors — fail to UNAUTHENTICATED, not 500
+      let session: AuthjsSessionLike | null;
+      try {
+        session = await auth(request);
+      } catch {
+        return {
+          ok: false,
+          response: apiError(
+            'UNAUTHENTICATED',
+            AUTHJS_SESSION_READ_FAILED_MESSAGE,
+            401,
+          ),
+        };
+      }
 
       // No session → unauthenticated
       if (!session || !session.user) {
@@ -218,16 +246,17 @@ export function createAuthjsRequestContextAdapter(
 
       // Session exists but user.id is missing, null, or empty
       const userId = session.user.id;
-      if (!userId || typeof userId !== 'string' || userId.trim().length === 0) {
+      const trimmedId = typeof userId === 'string' ? userId.trim() : '';
+      if (trimmedId.length === 0) {
         return invalidAuth(AUTHJS_SESSION_MISSING_USER_ID_MESSAGE);
       }
 
-      // Success — return authenticated context
+      // Success — return authenticated context with trimmed userId
       return {
         ok: true,
         context: createAuthenticatedUserRequestContext({
           requestId: getRequestId(request),
-          userId,
+          userId: trimmedId,
         }),
       };
     },
@@ -247,29 +276,24 @@ export function createAuthjsRequestContextAdapter(
 }
 
 // ---------------------------------------------------------------------------
-// Default Auth.js adapter factory (wired with runtime singleton)
+// Default Auth.js adapter factory (wired with shared runtime)
 // ---------------------------------------------------------------------------
 
 /**
  * Creates the default Auth.js request-context adapter wired to the
- * runtime `auth` singleton. Returns `null` if Auth.js auth is not
- * available (runtime not initialized).
+ * shared lazy runtime's readAuthjsSession function.
+ *
+ * Uses a lazy wrapper around readAuthjsSession to avoid importing
+ * authjs-runtime (and its Auth.js package transitive dependency) at
+ * module load time. The import happens only when auth is called.
  *
  * Called by `getDefaultAuthContextAdapter()` when the Auth.js
  * request-context feature flag is enabled.
  */
 export function createDefaultAuthjsAdapter(): AuthjsAuthContextAdapter {
-  const auth = getAuthjsAuth();
-
-  // Wrap the auth function to match AuthjsSessionReader signature
-  const sessionReader: AuthjsSessionReader = async (request: Request) => {
-    if (!auth) return null;
-    try {
-      return await auth(request);
-    } catch {
-      return null;
-    }
+  const lazySessionReader: AuthjsSessionReader = async (request: Request) => {
+    const { readAuthjsSession } = await import('@/lib/auth/authjs-runtime');
+    return readAuthjsSession(request);
   };
-
-  return createAuthjsRequestContextAdapter({ auth: sessionReader });
+  return createAuthjsRequestContextAdapter({ auth: lazySessionReader });
 }

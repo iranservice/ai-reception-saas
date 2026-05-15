@@ -26,7 +26,6 @@ import { isAuthjsRuntimeEnabled } from './authjs-feature-gate';
 import { createAuthjsAdapter } from './authjs-adapter';
 import { createAuthjsAdapterDb, type AuthjsPrismaClient } from './authjs-prisma-db';
 import { validateAuthjsSecret, AUTHJS_SESSION_STRATEGY } from './authjs-runtime-config';
-import { setAuthjsAuth } from './authjs-runtime';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -148,7 +147,7 @@ export function createAuthjsRouteHandlers(
   const adapterDb = createAuthjsAdapterDb(input.prisma);
   const adapter = createAuthjsAdapter(adapterDb);
 
-  // Initialize NextAuth
+  // Initialize NextAuth with JWT+session callbacks to thread user.id
   const nextAuth: NextAuthResult = NextAuth({
     adapter,
     providers: (input.providers ?? []) as never[],
@@ -156,10 +155,24 @@ export function createAuthjsRouteHandlers(
     secret,
     basePath: input.basePath,
     debug: input.debug ?? false,
+    callbacks: {
+      async jwt({ token, user }) {
+        // On sign-in, the user object from DB is present.
+        // Persist user.id into the JWT so session can read it.
+        if (user?.id) {
+          token.userId = user.id;
+        }
+        return token;
+      },
+      async session({ session, token }) {
+        // Thread user.id from JWT token into session.user.id
+        if (token.userId && session.user) {
+          session.user.id = token.userId as string;
+        }
+        return session;
+      },
+    },
   });
-
-  // Register auth for request-context adapter access
-  setAuthjsAuth(nextAuth.auth);
 
   return {
     enabled: true,

@@ -87,8 +87,9 @@ export {
 } from './authjs-google-provider';
 
 export {
-  getAuthjsAuth,
-  setAuthjsAuth,
-  resetAuthjsAuthForTests,
-  type AuthjsAuthFunction,
+  getEnabledAuthjsRuntime,
+  readAuthjsSession,
+  resetAuthjsRuntimeForTests,
+  type AuthjsRuntimeOutput,
+  type AuthjsSessionLike,
 } from './authjs-runtime';

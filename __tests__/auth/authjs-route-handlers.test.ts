@@ -422,7 +422,7 @@ describe('TASK-0034B kill switch semantics', () => {
 
     // Flag check must appear before any cache/handler access
     const flagCheckPattern = /isAuthjsRuntimeEnabled/;
-    const handlerAccessPattern = /getEnabledHandlers|cachedEnabledHandlers/;
+    const handlerAccessPattern = /getEnabledAuthjsRuntime|getEnabledHandlers|cachedEnabledHandlers/;
 
     const getFlagPos = getBody.search(flagCheckPattern);
     const getHandlerPos = getBody.search(handlerAccessPattern);

@@ -490,35 +490,20 @@ describe('TASK-0036 scope guard tests', () => {
     expect(source).not.toContain('authjs-route-handlers');
   });
 
-  it('route handler imports createAuthjsProviders', () => {
+  it('shared runtime (authjs-runtime.ts) imports createAuthjsProviders', () => {
     const source = fs.readFileSync(
-      path.join(
-        SRC_ROOT,
-        'app',
-        'api',
-        'auth',
-        '[...nextauth]',
-        'route.ts',
-      ),
+      path.join(SRC_ROOT, 'lib', 'auth', 'authjs-runtime.ts'),
       'utf-8',
     );
     expect(source).toContain('createAuthjsProviders');
     expect(source).toContain('authjs-google-provider');
   });
 
-  it('route handler calls createAuthjsProviders before getPrisma (fail-fast)', () => {
+  it('shared runtime calls createAuthjsProviders before getPrisma (fail-fast)', () => {
     const source = fs.readFileSync(
-      path.join(
-        SRC_ROOT,
-        'app',
-        'api',
-        'auth',
-        '[...nextauth]',
-        'route.ts',
-      ),
+      path.join(SRC_ROOT, 'lib', 'auth', 'authjs-runtime.ts'),
       'utf-8',
     );
-    // createAuthjsProviders() must appear before getPrisma in getEnabledHandlers
     const providerPos = source.indexOf('createAuthjsProviders()');
     const prismaPos = source.indexOf('getPrisma()');
     expect(providerPos).toBeGreaterThanOrEqual(0);
@@ -526,7 +511,7 @@ describe('TASK-0036 scope guard tests', () => {
     expect(providerPos).toBeLessThan(prismaPos);
   });
 
-  it('route handler does not hardcode providers: []', () => {
+  it('route handler delegates to shared runtime (no local cache)', () => {
     const source = fs.readFileSync(
       path.join(
         SRC_ROOT,
@@ -538,10 +523,9 @@ describe('TASK-0036 scope guard tests', () => {
       ),
       'utf-8',
     );
-    const codeOnly = source
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*/g, '');
-    expect(codeOnly).not.toMatch(/providers:\s*\[\s*\]/);
+    expect(source).toContain('getEnabledAuthjsRuntime');
+    expect(source).not.toContain('cachedEnabledHandlers');
+    expect(source).not.toContain('createAuthjsRouteHandlers');
   });
 
   it('auth barrel index.ts re-exports Google provider module', () => {

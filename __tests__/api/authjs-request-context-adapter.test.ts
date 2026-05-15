@@ -2,8 +2,9 @@
 // Tests — Auth.js Request-Context Adapter (TASK-0039)
 //
 // Verifies Auth.js-backed authenticated request-context resolver,
-// feature flag gating, session shape handling, and deferred tenant/system
-// resolution. No server startup, DB, or real Auth.js required.
+// feature flag gating, session shape handling, error catching,
+// trimmed userId, and deferred tenant/system resolution.
+// No server startup, DB, or real Auth.js required.
 // ===========================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -15,20 +16,16 @@ import {
   isAuthjsRequestContextEnabled,
   createAuthjsRequestContextAdapter,
   createDefaultAuthjsAdapter,
+  AUTHJS_REQUEST_CONTEXT_NOT_ENABLED_MESSAGE,
   AUTHJS_RUNTIME_NOT_ENABLED_MESSAGE,
+  AUTHJS_SESSION_READ_FAILED_MESSAGE,
   AUTHJS_SESSION_MISSING_USER_ID_MESSAGE,
   AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE,
   AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE,
-  type AuthjsSessionLike,
   type AuthjsSessionReader,
-  type AuthjsRequestContextAdapterOptions,
 } from '@/app/api/_shared/authjs-context-adapter';
 
-import {
-  getAuthjsAuth,
-  setAuthjsAuth,
-  resetAuthjsAuthForTests,
-} from '@/lib/auth/authjs-runtime';
+import type { AuthjsSessionLike } from '@/lib/auth/authjs-runtime';
 
 import { AUTHJS_RUNTIME_FEATURE_FLAG } from '@/lib/auth/authjs-feature-gate';
 
@@ -44,7 +41,6 @@ beforeEach(() => {
   prevRuntime = process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
   delete process.env[AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG];
   delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
-  resetAuthjsAuthForTests();
 });
 
 afterEach(() => {
@@ -58,7 +54,6 @@ afterEach(() => {
   } else {
     delete process.env[AUTHJS_RUNTIME_FEATURE_FLAG];
   }
-  resetAuthjsAuthForTests();
 });
 
 // ---------------------------------------------------------------------------
@@ -76,6 +71,12 @@ function mockAuth(session: AuthjsSessionLike | null): AuthjsSessionReader {
   return vi.fn(async () => session);
 }
 
+/** Both flags enabled */
+const bothFlagsEnv = {
+  [AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG]: 'true',
+  [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
+};
+
 function adapterWithEnv(
   auth: AuthjsSessionReader,
   env: Record<string, string | undefined>,
@@ -84,7 +85,7 @@ function adapterWithEnv(
 }
 
 // ---------------------------------------------------------------------------
-// 1. Feature flag gate
+// 1. Feature flag gate — isAuthjsRequestContextEnabled
 // ---------------------------------------------------------------------------
 
 describe('isAuthjsRequestContextEnabled', () => {
@@ -117,13 +118,47 @@ describe('isAuthjsRequestContextEnabled', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. resolveAuthenticated — Auth.js runtime disabled
+// 2. Blocker 4 — ENABLE_AUTHJS_REQUEST_CONTEXT not set
 // ---------------------------------------------------------------------------
 
-describe('createAuthjsRequestContextAdapter — resolveAuthenticated — runtime disabled', () => {
-  it('returns 501 AUTH_CONTEXT_UNAVAILABLE when Auth.js runtime is not enabled', async () => {
+describe('resolveAuthenticated — ENABLE_AUTHJS_REQUEST_CONTEXT not enabled', () => {
+  it('returns 501 AUTH_CONTEXT_UNAVAILABLE when ENABLE_AUTHJS_REQUEST_CONTEXT is missing', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const adapter = adapterWithEnv(auth, {
+      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
+      // ENABLE_AUTHJS_REQUEST_CONTEXT not set
+    });
+
+    const result = await adapter.resolveAuthenticated(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(501);
+      const body = await result.response.json();
+      expect(body.error.code).toBe('AUTH_CONTEXT_UNAVAILABLE');
+      expect(body.error.message).toBe(AUTHJS_REQUEST_CONTEXT_NOT_ENABLED_MESSAGE);
+    }
+  });
+
+  it('does not call auth() when request-context flag is disabled', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, {
+      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
+    });
+
+    await adapter.resolveAuthenticated(makeRequest());
+    expect(auth).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. resolveAuthenticated — Auth.js runtime disabled
+// ---------------------------------------------------------------------------
+
+describe('resolveAuthenticated — Auth.js runtime disabled', () => {
+  it('returns 501 AUTH_CONTEXT_UNAVAILABLE when ENABLE_AUTHJS_RUNTIME is not enabled', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, {
+      [AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG]: 'true',
       [AUTHJS_RUNTIME_FEATURE_FLAG]: undefined,
     });
 
@@ -139,7 +174,9 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — runtime
 
   it('does not call auth() when runtime is disabled', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
-    const adapter = adapterWithEnv(auth, {});
+    const adapter = adapterWithEnv(auth, {
+      [AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG]: 'true',
+    });
 
     await adapter.resolveAuthenticated(makeRequest());
     expect(auth).not.toHaveBeenCalled();
@@ -147,15 +184,13 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — runtime
 });
 
 // ---------------------------------------------------------------------------
-// 3. resolveAuthenticated — no session
+// 4. resolveAuthenticated — no session
 // ---------------------------------------------------------------------------
 
-describe('createAuthjsRequestContextAdapter — resolveAuthenticated — no session', () => {
-  const runtimeEnv = { [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true' };
-
+describe('resolveAuthenticated — no session', () => {
   it('returns 401 UNAUTHENTICATED when auth returns null', async () => {
     const auth = mockAuth(null);
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
@@ -168,7 +203,7 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — no sess
 
   it('returns 401 UNAUTHENTICATED when session has no user', async () => {
     const auth = mockAuth({ user: null });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
@@ -181,7 +216,7 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — no sess
 
   it('returns 401 UNAUTHENTICATED when session has undefined user', async () => {
     const auth = mockAuth({});
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
@@ -192,15 +227,49 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — no sess
 });
 
 // ---------------------------------------------------------------------------
-// 4. resolveAuthenticated — valid session
+// 5. Blocker 5 — auth(request) throws
 // ---------------------------------------------------------------------------
 
-describe('createAuthjsRequestContextAdapter — resolveAuthenticated — valid session', () => {
-  const runtimeEnv = { [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true' };
+describe('resolveAuthenticated — auth throws', () => {
+  it('returns 401 UNAUTHENTICATED when auth(request) throws', async () => {
+    const auth = vi.fn(async () => {
+      throw new Error('Auth.js internal error');
+    }) as AuthjsSessionReader;
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
+    const result = await adapter.resolveAuthenticated(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(401);
+      const body = await result.response.json();
+      expect(body.error.code).toBe('UNAUTHENTICATED');
+      expect(body.error.message).toBe(AUTHJS_SESSION_READ_FAILED_MESSAGE);
+    }
+  });
+
+  it('does not return 500 when auth throws', async () => {
+    const auth = vi.fn(async () => {
+      throw new TypeError('Cannot read properties of undefined');
+    }) as AuthjsSessionReader;
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+
+    const result = await adapter.resolveAuthenticated(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // Must be 401, NOT 500
+      expect(result.response.status).toBe(401);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. resolveAuthenticated — valid session
+// ---------------------------------------------------------------------------
+
+describe('resolveAuthenticated — valid session', () => {
   it('returns AuthenticatedUserRequestContext with user.id', async () => {
     const auth = mockAuth({ user: { id: 'internal-user-uuid-001' } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(true);
@@ -215,7 +284,7 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — valid s
 
   it('populates requestId from x-request-id header', async () => {
     const auth = mockAuth({ user: { id: 'user-req-id' } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(
       makeRequest({ 'x-request-id': 'req-abc-123' }),
@@ -228,7 +297,7 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — valid s
 
   it('requestId is null when x-request-id header is absent', async () => {
     const auth = mockAuth({ user: { id: 'user-no-req-id' } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(true);
@@ -239,7 +308,7 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — valid s
 
   it('passes request to auth function', async () => {
     const auth = vi.fn(async () => ({ user: { id: 'user-pass-req' } }));
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const req = makeRequest();
     await adapter.resolveAuthenticated(req);
@@ -248,15 +317,43 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — valid s
 });
 
 // ---------------------------------------------------------------------------
-// 5. resolveAuthenticated — invalid session (missing user.id)
+// 7. Blocker 6 — trimmed userId
 // ---------------------------------------------------------------------------
 
-describe('createAuthjsRequestContextAdapter — resolveAuthenticated — missing user.id', () => {
-  const runtimeEnv = { [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true' };
+describe('resolveAuthenticated — userId trimming', () => {
+  it('trims leading and trailing whitespace from user.id', async () => {
+    const auth = mockAuth({ user: { id: '  user-with-spaces  ' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
+    const result = await adapter.resolveAuthenticated(makeRequest());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.context.userId).toBe('user-with-spaces');
+    }
+  });
+
+  it('whitespace-only user.id fails with INVALID_AUTH_CONTEXT', async () => {
+    const auth = mockAuth({ user: { id: '   ' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+
+    const result = await adapter.resolveAuthenticated(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(400);
+      const body = await result.response.json();
+      expect(body.error.code).toBe('INVALID_AUTH_CONTEXT');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. resolveAuthenticated — missing user.id
+// ---------------------------------------------------------------------------
+
+describe('resolveAuthenticated — missing user.id', () => {
   it('returns 400 INVALID_AUTH_CONTEXT when user.id is undefined', async () => {
     const auth = mockAuth({ user: { email: 'test@example.com' } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
@@ -270,31 +367,18 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — missing
 
   it('returns 400 INVALID_AUTH_CONTEXT when user.id is null', async () => {
     const auth = mockAuth({ user: { id: null } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.response.status).toBe(400);
-      const body = await result.response.json();
-      expect(body.error.code).toBe('INVALID_AUTH_CONTEXT');
     }
   });
 
   it('returns 400 INVALID_AUTH_CONTEXT when user.id is empty string', async () => {
     const auth = mockAuth({ user: { id: '' } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
-
-    const result = await adapter.resolveAuthenticated(makeRequest());
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.response.status).toBe(400);
-    }
-  });
-
-  it('returns 400 INVALID_AUTH_CONTEXT when user.id is whitespace-only', async () => {
-    const auth = mockAuth({ user: { id: '   ' } });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
@@ -311,7 +395,7 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — missing
         image: 'https://example.com/avatar.jpg',
       },
     });
-    const adapter = adapterWithEnv(auth, runtimeEnv);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
@@ -324,15 +408,13 @@ describe('createAuthjsRequestContextAdapter — resolveAuthenticated — missing
 });
 
 // ---------------------------------------------------------------------------
-// 6. resolveTenant — always unavailable
+// 9. resolveTenant — always unavailable
 // ---------------------------------------------------------------------------
 
-describe('createAuthjsRequestContextAdapter — resolveTenant', () => {
+describe('resolveTenant', () => {
   it('always returns 501 AUTH_CONTEXT_UNAVAILABLE', async () => {
     const auth = mockAuth({ user: { id: 'user-tenant' } });
-    const adapter = adapterWithEnv(auth, {
-      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
-    });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveTenant(makeRequest());
     expect(result.ok).toBe(false);
@@ -346,9 +428,7 @@ describe('createAuthjsRequestContextAdapter — resolveTenant', () => {
 
   it('does not call auth when resolveTenant is called', async () => {
     const auth = mockAuth({ user: { id: 'user-tenant' } });
-    const adapter = adapterWithEnv(auth, {
-      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
-    });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     await adapter.resolveTenant(makeRequest());
     expect(auth).not.toHaveBeenCalled();
@@ -356,15 +436,13 @@ describe('createAuthjsRequestContextAdapter — resolveTenant', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. resolveSystem — always unavailable
+// 10. resolveSystem — always unavailable
 // ---------------------------------------------------------------------------
 
-describe('createAuthjsRequestContextAdapter — resolveSystem', () => {
+describe('resolveSystem', () => {
   it('always returns 501 AUTH_CONTEXT_UNAVAILABLE', async () => {
     const auth = mockAuth({ user: { id: 'user-system' } });
-    const adapter = adapterWithEnv(auth, {
-      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
-    });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     const result = await adapter.resolveSystem(makeRequest());
     expect(result.ok).toBe(false);
@@ -378,9 +456,7 @@ describe('createAuthjsRequestContextAdapter — resolveSystem', () => {
 
   it('does not call auth when resolveSystem is called', async () => {
     const auth = mockAuth({ user: { id: 'user-system' } });
-    const adapter = adapterWithEnv(auth, {
-      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
-    });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
 
     await adapter.resolveSystem(makeRequest());
     expect(auth).not.toHaveBeenCalled();
@@ -388,40 +464,7 @@ describe('createAuthjsRequestContextAdapter — resolveSystem', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. authjs-runtime.ts — getAuthjsAuth / setAuthjsAuth / reset
-// ---------------------------------------------------------------------------
-
-describe('authjs-runtime — getAuthjsAuth / setAuthjsAuth', () => {
-  it('getAuthjsAuth returns null before setAuthjsAuth is called', () => {
-    expect(getAuthjsAuth()).toBeNull();
-  });
-
-  it('setAuthjsAuth registers the auth function', () => {
-    const mockFn = vi.fn();
-    setAuthjsAuth(mockFn);
-    expect(getAuthjsAuth()).toBe(mockFn);
-  });
-
-  it('resetAuthjsAuthForTests resets to null', () => {
-    const mockFn = vi.fn();
-    setAuthjsAuth(mockFn);
-    expect(getAuthjsAuth()).toBe(mockFn);
-    resetAuthjsAuthForTests();
-    expect(getAuthjsAuth()).toBeNull();
-  });
-
-  it('setAuthjsAuth overwrites on subsequent calls', () => {
-    const fn1 = vi.fn();
-    const fn2 = vi.fn();
-    setAuthjsAuth(fn1);
-    expect(getAuthjsAuth()).toBe(fn1);
-    setAuthjsAuth(fn2);
-    expect(getAuthjsAuth()).toBe(fn2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 9. createDefaultAuthjsAdapter — wired with runtime singleton
+// 11. createDefaultAuthjsAdapter
 // ---------------------------------------------------------------------------
 
 describe('createDefaultAuthjsAdapter', () => {
@@ -431,34 +474,10 @@ describe('createDefaultAuthjsAdapter', () => {
     expect(typeof adapter.resolveTenant).toBe('function');
     expect(typeof adapter.resolveSystem).toBe('function');
   });
-
-  it('resolveAuthenticated returns 401 when no auth is registered', async () => {
-    process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    const adapter = createDefaultAuthjsAdapter();
-
-    const result = await adapter.resolveAuthenticated(makeRequest());
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      // auth returns null (no function registered) → UNAUTHENTICATED
-      expect(result.response.status).toBe(401);
-    }
-  });
-
-  it('resolveAuthenticated works with registered auth function', async () => {
-    process.env[AUTHJS_RUNTIME_FEATURE_FLAG] = 'true';
-    setAuthjsAuth(async () => ({ user: { id: 'default-adapter-user' } }));
-    const adapter = createDefaultAuthjsAdapter();
-
-    const result = await adapter.resolveAuthenticated(makeRequest());
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.context.userId).toBe('default-adapter-user');
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------
-// 10. Scope guards
+// 12. Scope guards
 // ---------------------------------------------------------------------------
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -476,10 +495,13 @@ describe('TASK-0039 scope guards', () => {
     PROJECT_ROOT,
     'src/lib/auth/authjs-runtime.ts',
   );
+  const ROUTE_PATH = path.join(
+    PROJECT_ROOT,
+    'src/app/api/auth/[...nextauth]/route.ts',
+  );
 
-  it('authjs-context-adapter.ts does not import next-auth directly', () => {
+  it('authjs-context-adapter.ts does not import the Auth.js package directly', () => {
     const content = fs.readFileSync(AUTHJS_CONTEXT_ADAPTER_PATH, 'utf-8');
-    // Strip comments to avoid false positives from doc comments
     const codeOnly = content
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*/g, '');
@@ -504,26 +526,29 @@ describe('TASK-0039 scope guards', () => {
     }
   });
 
-  it('auth-context-adapter.ts scope guard still passes — no next-auth import', () => {
+  it('auth-context-adapter.ts scope guard still passes', () => {
     const content = fs.readFileSync(AUTH_CONTEXT_ADAPTER_PATH, 'utf-8');
-    // The existing scope guard checks for these strings in the source
-    const forbidden = [
-      'next-auth',
-      'jwt',
-      'cookie',
-    ];
+    const forbidden = ['next-auth', 'jwt', 'cookie'];
     for (const f of forbidden) {
       expect(content).not.toContain(f);
     }
   });
 
-  it('authjs-runtime.ts does not import next-auth directly', () => {
+  it('route.ts does not own cachedEnabledHandlers anymore', () => {
+    const content = fs.readFileSync(ROUTE_PATH, 'utf-8');
+    expect(content).not.toContain('cachedEnabledHandlers');
+    expect(content).not.toContain('createAuthjsRouteHandlers');
+  });
+
+  it('route.ts delegates to getEnabledAuthjsRuntime', () => {
+    const content = fs.readFileSync(ROUTE_PATH, 'utf-8');
+    expect(content).toContain('getEnabledAuthjsRuntime');
+  });
+
+  it('authjs-runtime.ts does not use setter/getter pattern', () => {
     const content = fs.readFileSync(AUTHJS_RUNTIME_PATH, 'utf-8');
-    const codeOnly = content
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*/g, '');
-    expect(codeOnly).not.toContain("from 'next-auth");
-    expect(codeOnly).not.toContain('from "next-auth');
+    expect(content).not.toContain('setAuthjsAuth');
+    expect(content).not.toContain('getAuthjsAuth');
   });
 
   it('no middleware.ts was added', () => {
@@ -550,10 +575,29 @@ describe('TASK-0039 scope guards', () => {
     );
     expect(dirs).toEqual([]);
   });
+
+  it('authjs-route-handlers.ts includes jwt and session callbacks', () => {
+    const content = fs.readFileSync(
+      path.join(PROJECT_ROOT, 'src/lib/auth/authjs-route-handlers.ts'),
+      'utf-8',
+    );
+    expect(content).toContain('callbacks');
+    expect(content).toContain('async jwt(');
+    expect(content).toContain('async session(');
+    expect(content).toContain('token.userId');
+  });
+
+  it('authjs-route-handlers.ts does not call setAuthjsAuth', () => {
+    const content = fs.readFileSync(
+      path.join(PROJECT_ROOT, 'src/lib/auth/authjs-route-handlers.ts'),
+      'utf-8',
+    );
+    expect(content).not.toContain('setAuthjsAuth');
+  });
 });
 
 // ---------------------------------------------------------------------------
-// 11. Feature flag constants
+// 13. Feature flag constants
 // ---------------------------------------------------------------------------
 
 describe('TASK-0039 constants', () => {
@@ -564,7 +608,9 @@ describe('TASK-0039 constants', () => {
   });
 
   it('error messages are non-empty strings', () => {
+    expect(AUTHJS_REQUEST_CONTEXT_NOT_ENABLED_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_RUNTIME_NOT_ENABLED_MESSAGE.length).toBeGreaterThan(0);
+    expect(AUTHJS_SESSION_READ_FAILED_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_SESSION_MISSING_USER_ID_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE.length).toBeGreaterThan(0);
