@@ -83,8 +83,8 @@ None. This is a documentation-only task.
 
 ## Decision
 
-Accepted Auth.js request-context resolver design defining: (1) strict tenant scope source order — route param `businessId` first, `x-business-id` header only for generic routes, query/body/JWT/last-used rejected or deferred; (2) neutral `TenantMembershipResolver` interface with no concrete repository or factory function names committed; (3) request-aware `auth(request)` session boundary enforced by adapter factory signature; (4) JWT callback prerequisite for `session.user.id` confirmed; (5) five-phase rollout plan with production deployment deferred.
+Accepted Auth.js request-context resolver design; implementation, middleware, tenant picker, and production rollout remain deferred.
 
 ## Recommended Next Task
 
-[Phase 1] TASK-0039: Auth.js JWT and session callback configuration for user ID enrichment
+[Phase 2] TASK-0039: Implement Auth.js authenticated request-context resolver behind feature flag
