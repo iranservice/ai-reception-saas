@@ -72,3 +72,16 @@ export {
   type AuthjsRouteHandlerInput,
   type AuthjsRouteHandlerOutput,
 } from './authjs-route-handlers';
+
+export {
+  AUTHJS_GOOGLE_PROVIDER_FEATURE_FLAG,
+  AUTHJS_GOOGLE_PROVIDER_ID,
+  AUTHJS_GOOGLE_MISSING_CLIENT_ID_MESSAGE,
+  AUTHJS_GOOGLE_MISSING_CLIENT_SECRET_MESSAGE,
+  isAuthjsGoogleProviderEnabled,
+  validateGoogleProviderCredentials,
+  createGoogleAuthProvider,
+  createAuthjsProviders,
+  type GoogleProviderCredentials,
+  type GoogleProviderEnv,
+} from './authjs-google-provider';

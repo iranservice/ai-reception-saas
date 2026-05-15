@@ -19,10 +19,12 @@
  *
  * TASK-0034: Route wiring only — no middleware, no request-context integration.
  * TASK-0034B: Fix kill switch — flag checked before cache on every request.
+ * TASK-0036: Wire Google provider behind ENABLE_AUTHJS_GOOGLE_PROVIDER flag.
  */
 
 import { NextRequest } from 'next/server';
 import { isAuthjsRuntimeEnabled } from '@/lib/auth/authjs-feature-gate';
+import { createAuthjsProviders } from '@/lib/auth/authjs-google-provider';
 import {
   createAuthjsRouteHandlers,
   createDisabledAuthjsRouteResponse,
@@ -48,7 +50,7 @@ async function getEnabledHandlers(): Promise<AuthjsRouteHandlerOutput> {
   cachedEnabledHandlers = createAuthjsRouteHandlers({
     prisma: getPrisma(),
     authSecret: process.env.AUTH_SECRET ?? '',
-    providers: [],
+    providers: createAuthjsProviders(),
     basePath: '/api/auth',
     debug: process.env.NODE_ENV === 'development',
   });
