@@ -104,11 +104,11 @@ None.
 
 ## Decision
 
-Accepted Google OAuth provider configuration behind provider feature flag, with runtime and provider flags as separate gates and behavioral route integration tests verifying all matrix states.
+Accepted Google provider configuration behind provider feature flag; runtime remains disabled by default and request-context integration remains deferred.
 
 ## Recommended Next Task
 
-[Phase 2] TASK-0037: Local end-to-end Google OAuth verification with Google Cloud Console credentials
+[Phase 2] TASK-0037: Local Auth.js Google OAuth smoke-test documentation and operator runbook
 
 ## Scope Confirmation
 
