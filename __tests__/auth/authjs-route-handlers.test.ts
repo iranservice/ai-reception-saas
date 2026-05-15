@@ -391,3 +391,203 @@ describe('TASK-0034 scope guard tests', () => {
     expect(codeOnly).not.toContain('getPrisma');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Kill switch semantics (TASK-0034B)
+// ---------------------------------------------------------------------------
+
+describe('TASK-0034B kill switch semantics', () => {
+  const SRC_ROOT = path.resolve(__dirname, '../../src');
+
+  it('route handler checks isAuthjsRuntimeEnabled before accessing cache', () => {
+    const routeSource = fs.readFileSync(
+      path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts'),
+      'utf-8',
+    );
+
+    // GET and POST must check the flag inline, not delegate to a helper
+    // that checks cache first
+    const getMatch = routeSource.match(
+      /export\s+async\s+function\s+GET[\s\S]*?\{([\s\S]*?)^\}/m,
+    );
+    const postMatch = routeSource.match(
+      /export\s+async\s+function\s+POST[\s\S]*?\{([\s\S]*?)^\}/m,
+    );
+
+    expect(getMatch).not.toBeNull();
+    expect(postMatch).not.toBeNull();
+
+    const getBody = getMatch![1];
+    const postBody = postMatch![1];
+
+    // Flag check must appear before any cache/handler access
+    const flagCheckPattern = /isAuthjsRuntimeEnabled/;
+    const handlerAccessPattern = /getEnabledHandlers|cachedEnabledHandlers/;
+
+    const getFlagPos = getBody.search(flagCheckPattern);
+    const getHandlerPos = getBody.search(handlerAccessPattern);
+    const postFlagPos = postBody.search(flagCheckPattern);
+    const postHandlerPos = postBody.search(handlerAccessPattern);
+
+    expect(getFlagPos).toBeGreaterThanOrEqual(0);
+    expect(getHandlerPos).toBeGreaterThanOrEqual(0);
+    expect(getFlagPos).toBeLessThan(getHandlerPos);
+
+    expect(postFlagPos).toBeGreaterThanOrEqual(0);
+    expect(postHandlerPos).toBeGreaterThanOrEqual(0);
+    expect(postFlagPos).toBeLessThan(postHandlerPos);
+  });
+
+  it('getEnabledHandlers is not called when disabled', () => {
+    const routeSource = fs.readFileSync(
+      path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts'),
+      'utf-8',
+    );
+
+    // The route must NOT have a pattern like:
+    //   if (cachedEnabledHandlers) return cachedEnabledHandlers;
+    //   if (!isAuthjsRuntimeEnabled()) ...
+    // That would check cache before flag.
+    // Instead, GET/POST must check flag first, then call getEnabledHandlers.
+
+    // Verify no function checks cache before flag
+    const getHandlersMatch = routeSource.match(
+      /function\s+getHandlers[\s\S]*?\{([\s\S]*?)^\}/m,
+    );
+    // getHandlers should not exist — replaced by getEnabledHandlers
+    expect(getHandlersMatch).toBeNull();
+  });
+
+  it('route exports GET and POST that return disabled response when flag is off', () => {
+    const routeSource = fs.readFileSync(
+      path.join(SRC_ROOT, 'app', 'api', 'auth', '[...nextauth]', 'route.ts'),
+      'utf-8',
+    );
+
+    // Both handlers must call createDisabledAuthjsRouteResponse
+    expect(routeSource).toContain('createDisabledAuthjsRouteResponse');
+    // Both must export GET and POST
+    expect(routeSource).toContain('export async function GET');
+    expect(routeSource).toContain('export async function POST');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Behavioral kill-switch regression tests (TASK-0034B)
+// ---------------------------------------------------------------------------
+
+describe('TASK-0034B behavioral kill-switch regression', () => {
+  const ROUTE_MODULE = '../../src/app/api/auth/[...nextauth]/route';
+
+  let mockGetPrisma: ReturnType<typeof vi.fn>;
+  let mockNextAuth: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+
+    // Mock NextAuth — returns known GET/POST handlers
+    mockNextAuth = vi.fn(() => ({
+      handlers: {
+        GET: vi.fn(async () => new Response('auth-get')),
+        POST: vi.fn(async () => new Response('auth-post')),
+      },
+      auth: vi.fn(),
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+    }));
+    vi.doMock('next-auth', () => ({ default: mockNextAuth }));
+
+    // Mock @/lib/prisma — returns fake Prisma-like client
+    mockGetPrisma = vi.fn(() => ({
+      user: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+      account: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
+      verificationToken: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
+    }));
+    vi.doMock('@/lib/prisma', () => ({ getPrisma: mockGetPrisma }));
+
+    // Clean env
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+    delete process.env.AUTH_SECRET;
+  });
+
+  afterAll(() => {
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+    delete process.env.AUTH_SECRET;
+  });
+
+  it('GET: cached enabled handler does not bypass later disabled flag', async () => {
+    // Step 1: Enable the flag
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+
+    // Step 2: Import route module (fresh due to resetModules)
+    const route = await import(ROUTE_MODULE);
+
+    // Step 3: Call GET — should return mocked Auth.js response
+    const enabledResponse = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+    expect(enabledResponse.status).toBe(200);
+    const enabledBody = await enabledResponse.text();
+    expect(enabledBody).toBe('auth-get');
+
+    // Step 4: Verify NextAuth and getPrisma were called once
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    expect(mockGetPrisma).toHaveBeenCalledTimes(1);
+
+    // Step 5: Disable the flag (same process, same module, cached handlers exist)
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+
+    // Step 6: Call GET again — must return 501 despite cached enabled handlers
+    const disabledResponse = await route.GET(
+      new Request('http://localhost/api/auth/session'),
+    );
+    expect(disabledResponse.status).toBe(501);
+    const disabledBody = await disabledResponse.json();
+    expect(disabledBody.ok).toBe(false);
+    expect(disabledBody.error.code).toBe('AUTHJS_RUNTIME_DISABLED');
+    expect(disabledBody.error.message).toBe('Auth.js runtime is disabled.');
+
+    // Step 7: Verify NextAuth and getPrisma were NOT called again
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    expect(mockGetPrisma).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST: cached enabled handler does not bypass later disabled flag', async () => {
+    // Step 1: Enable the flag
+    process.env.ENABLE_AUTHJS_RUNTIME = 'true';
+    process.env.AUTH_SECRET = 'test-secret-at-least-32-chars-long!!';
+
+    // Step 2: Import route module (fresh due to resetModules)
+    const route = await import(ROUTE_MODULE);
+
+    // Step 3: Call POST — should return mocked Auth.js response
+    const enabledResponse = await route.POST(
+      new Request('http://localhost/api/auth/signin', { method: 'POST' }),
+    );
+    expect(enabledResponse.status).toBe(200);
+    const enabledBody = await enabledResponse.text();
+    expect(enabledBody).toBe('auth-post');
+
+    // Step 4: Verify NextAuth and getPrisma were called once
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    expect(mockGetPrisma).toHaveBeenCalledTimes(1);
+
+    // Step 5: Disable the flag (same process, same module, cached handlers exist)
+    delete process.env.ENABLE_AUTHJS_RUNTIME;
+
+    // Step 6: Call POST again — must return 501 despite cached enabled handlers
+    const disabledResponse = await route.POST(
+      new Request('http://localhost/api/auth/signin', { method: 'POST' }),
+    );
+    expect(disabledResponse.status).toBe(501);
+    const disabledBody = await disabledResponse.json();
+    expect(disabledBody.ok).toBe(false);
+    expect(disabledBody.error.code).toBe('AUTHJS_RUNTIME_DISABLED');
+    expect(disabledBody.error.message).toBe('Auth.js runtime is disabled.');
+
+    // Step 7: Verify NextAuth and getPrisma were NOT called again
+    expect(mockNextAuth).toHaveBeenCalledTimes(1);
+    expect(mockGetPrisma).toHaveBeenCalledTimes(1);
+  });
+});
