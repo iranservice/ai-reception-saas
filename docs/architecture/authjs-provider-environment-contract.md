@@ -96,9 +96,10 @@ import Google from 'next-auth/providers/google';
 | Variable | Purpose | Format | Validation Rule | When Needed |
 |---|---|---|---|---|
 | `ENABLE_AUTHJS_RUNTIME` | Feature flag for Auth.js runtime | Exact string `"true"` | Strict equality — only `"true"` enables; `"TRUE"`, `"1"`, `" true "` are all disabled | Always (existing) |
-| `AUTH_SECRET` | JWT signing and encryption key | Non-empty string, minimum 32 characters recommended | Reject null/undefined/empty/whitespace-only | When `ENABLE_AUTHJS_RUNTIME=true` (existing validation) |
-| `AUTH_GOOGLE_ID` | Google OAuth client ID | Non-empty string, format `*.apps.googleusercontent.com` | Reject null/undefined/empty/whitespace-only | When Google provider is configured |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret | Non-empty string | Reject null/undefined/empty/whitespace-only | When Google provider is configured |
+| `ENABLE_AUTHJS_GOOGLE_PROVIDER` | Feature flag for Google OAuth provider | Exact string `"true"` | Strict equality — only `"true"` enables; `"TRUE"`, `"1"`, `" true "` are all disabled | When Google provider rollout is desired |
+| `AUTH_SECRET` | JWT signing and encryption key | Non-empty string, minimum 32 characters recommended | Reject null/undefined/empty/whitespace-only | When `ENABLE_AUTHJS_RUNTIME === "true"` (existing validation) |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID | Non-empty string, format `*.apps.googleusercontent.com` | Reject null/undefined/empty/whitespace-only | When both `ENABLE_AUTHJS_RUNTIME === "true"` AND `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"` |
+| `AUTH_GOOGLE_SECRET` | Google OAuth client secret | Non-empty string | Reject null/undefined/empty/whitespace-only | When both `ENABLE_AUTHJS_RUNTIME === "true"` AND `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"` |
 
 ### Optional Variables
 
@@ -125,17 +126,17 @@ This task does not create, modify, or populate any environment files (`.env`, `.
 
 ### Startup-Time Validation (at route handler initialization)
 
-When `ENABLE_AUTHJS_RUNTIME=true`, the following validations must pass before the route handler initializes:
+When `ENABLE_AUTHJS_RUNTIME === "true"`, the following validations must pass before the route handler initializes:
 
-| Check | Validation | Failure Behavior |
-|---|---|---|
-| `AUTH_SECRET` | Non-empty string after trim | Throw `Error` — handler does not initialize |
-| `AUTH_GOOGLE_ID` | Non-empty string after trim | Throw `Error` — handler does not initialize |
-| `AUTH_GOOGLE_SECRET` | Non-empty string after trim | Throw `Error` — handler does not initialize |
+| Check | Condition | Validation | Failure Behavior |
+|---|---|---|---|
+| `AUTH_SECRET` | `ENABLE_AUTHJS_RUNTIME === "true"` | Non-empty string after trim | Throw `Error` — handler does not initialize |
+| `AUTH_GOOGLE_ID` | `ENABLE_AUTHJS_RUNTIME === "true"` AND `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"` | Non-empty string after trim | Throw `Error` — provider does not initialize |
+| `AUTH_GOOGLE_SECRET` | `ENABLE_AUTHJS_RUNTIME === "true"` AND `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"` | Non-empty string after trim | Throw `Error` — provider does not initialize |
 
 **Existing validation:** `AUTH_SECRET` validation already exists in `validateAuthjsSecret()` (`src/lib/auth/authjs-runtime-config.ts`).
 
-**New validation needed:** Google provider credentials must be validated before passing to the provider constructor. Validation should follow the same pattern — reject null/undefined/empty/whitespace-only.
+**New validation needed:** Google provider credentials must be validated before passing to the provider constructor, but only when `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"`. Validation should follow the same pattern — reject null/undefined/empty/whitespace-only.
 
 ### Runtime Validation (per-request)
 
@@ -143,7 +144,7 @@ When `ENABLE_AUTHJS_RUNTIME=true`, the following validations must pass before th
 |---|---|---|
 | `ENABLE_AUTHJS_RUNTIME` | Exact `"true"` check | Return 501 structured JSON (existing kill switch) |
 
-No per-request validation of provider secrets — secrets are validated once at initialization and cached.
+No per-request validation of provider secrets or provider flag — secrets and provider flag are evaluated once at initialization and cached. The provider flag determines whether Google is added to the providers array at initialization time.
 
 ## Feature-Flag Behavior
 
@@ -151,28 +152,48 @@ No per-request validation of provider secrets — secrets are validated once at 
 
 The existing feature flag behavior is unchanged:
 
-| Flag State | Route Behavior | Provider Behavior |
-|---|---|---|
-| Not set / any value except `"true"` | Returns 501 `AUTHJS_RUNTIME_DISABLED` JSON | No provider initialization, no Prisma call, no NextAuth call |
-| `"true"` | Initializes NextAuth, delegates to handlers | Google provider is configured and active |
+| Flag State | Route Behavior |
+|---|---|
+| Not set / any value except `"true"` | Returns 501 `AUTHJS_RUNTIME_DISABLED` JSON — no provider initialization, no Prisma call, no NextAuth call |
+| `"true"` | Initializes Auth.js runtime, delegates to NextAuth handlers — providers determined by provider flags |
 
-### No New Feature Flag for Google Provider
+### Provider Feature Flag: `ENABLE_AUTHJS_GOOGLE_PROVIDER`
 
-A separate feature flag for Google OAuth is **not recommended** at this stage.
+`ENABLE_AUTHJS_GOOGLE_PROVIDER` is accepted for Google provider rollout.
+
+**Semantics:**
+
+- Runtime flag (`ENABLE_AUTHJS_RUNTIME`) and provider flag (`ENABLE_AUTHJS_GOOGLE_PROVIDER`) are **separate gates**.
+- Runtime flag controls Auth.js route/config availability.
+- Provider flag controls whether Google provider is added to the `providers` array.
+- Provider flag is required for rollout safety and rollback.
+- Provider flag must be exact `"true"` only — no trimming, no case normalization, no numeric truthy.
+- `"TRUE"`, `"1"`, `"yes"`, `" true "` must all be treated as disabled.
 
 **Rationale:**
 
-- The entire Auth.js runtime is already gated behind `ENABLE_AUTHJS_RUNTIME`.
-- Adding a second flag (`ENABLE_GOOGLE_PROVIDER`) would add complexity with minimal benefit.
-- If Google OAuth needs to be disabled while Auth.js runtime stays enabled, the runtime can simply be disabled entirely — there are no other active providers.
-- A per-provider feature flag should be introduced only when multiple providers are active simultaneously.
+- Enables safe rollout: runtime can be enabled for testing without a real provider.
+- Enables safe rollback: Google provider can be disabled without disabling the entire Auth.js runtime.
+- Follows the same strict semantics as `ENABLE_AUTHJS_RUNTIME` for consistency.
+- Required by CTO review for production safety.
+
+### Runtime Behavior Matrix
+
+| `ENABLE_AUTHJS_RUNTIME` | `ENABLE_AUTHJS_GOOGLE_PROVIDER` | `AUTH_SECRET` | Google envs | Result |
+|---|---|---|---|---|
+| missing/false | any | any | any | Route disabled — 501 `AUTHJS_RUNTIME_DISABLED` |
+| `"true"` | missing/false | valid | any | Auth.js enabled with no real provider (empty providers array) |
+| `"true"` | `"true"` | missing | valid | Config error — `AUTH_SECRET` validation throws |
+| `"true"` | `"true"` | valid | missing | Provider config error — Google credential validation throws |
+| `"true"` | `"true"` | valid | valid | Google provider configured and active |
 
 ### Kill Switch Semantics (Preserved)
 
-- Flag is checked **before** accessing cached handlers on every GET and POST request.
-- Disabling the flag immediately takes effect — cached handlers are never returned while disabled.
-- Re-enabling the flag re-initializes handlers on the next request.
+- Runtime flag is checked **before** accessing cached handlers on every GET and POST request.
+- Disabling the runtime flag immediately takes effect — cached handlers are never returned while disabled.
+- Re-enabling the runtime flag re-initializes handlers on the next request.
 - No process restart required for flag changes.
+- Provider flag is evaluated at handler initialization time, not per-request.
 
 ## Callback Boundaries
 
@@ -252,16 +273,21 @@ The future provider configuration in the route handler will follow this pattern:
 
 import Google from 'next-auth/providers/google';
 
+// Build providers array based on provider flags
+const providers: unknown[] = [];
+
+if (isAuthjsGoogleProviderEnabled()) {
+  const { clientId, clientSecret } = validateGoogleProviderCredentials();
+  providers.push(
+    Google({ clientId, clientSecret }),
+  );
+}
+
 // In route.ts getEnabledHandlers():
 cachedEnabledHandlers = createAuthjsRouteHandlers({
   prisma: getPrisma(),
   authSecret: process.env.AUTH_SECRET ?? '',
-  providers: [
-    Google({
-      clientId: process.env.AUTH_GOOGLE_ID!,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
-    }),
-  ],
+  providers,
   basePath: '/api/auth',
   debug: process.env.NODE_ENV === 'development',
 });
@@ -269,11 +295,30 @@ cachedEnabledHandlers = createAuthjsRouteHandlers({
 
 **Key design decisions:**
 
-- Provider is passed through the existing `providers` array in `AuthjsRouteHandlerInput`.
+- Provider is added to the `providers` array **only** when `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"`.
+- When the provider flag is disabled, Auth.js runtime initializes with an empty providers array.
 - `createAuthjsRouteHandlers` already accepts `providers?: unknown[]`.
 - No changes to the factory interface are needed.
 - Provider credentials are read from environment at handler initialization time (lazy, deferred to first request).
 - Provider credentials are NOT read at import time (avoids build-time failures).
+- Google credential validation is only performed when the provider flag is enabled.
+
+### Provider Feature Flag Helper
+
+A new feature flag helper should be created following the existing `isAuthjsRuntimeEnabled` pattern:
+
+```ts
+// Future implementation — NOT applied in this task
+
+export const AUTHJS_GOOGLE_PROVIDER_FEATURE_FLAG =
+  'ENABLE_AUTHJS_GOOGLE_PROVIDER' as const;
+
+export function isAuthjsGoogleProviderEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env[AUTHJS_GOOGLE_PROVIDER_FEATURE_FLAG] === 'true';
+}
+```
 
 ### Provider Credential Validation Function
 
@@ -291,14 +336,14 @@ export function validateGoogleProviderCredentials(env: NodeJS.ProcessEnv): {
 
   if (!clientId) {
     throw new Error(
-      'AUTH_GOOGLE_ID is required when ENABLE_AUTHJS_RUNTIME is enabled. ' +
+      'AUTH_GOOGLE_ID is required when ENABLE_AUTHJS_GOOGLE_PROVIDER is enabled. ' +
       'Provide a valid Google OAuth client ID.'
     );
   }
 
   if (!clientSecret) {
     throw new Error(
-      'AUTH_GOOGLE_SECRET is required when ENABLE_AUTHJS_RUNTIME is enabled. ' +
+      'AUTH_GOOGLE_SECRET is required when ENABLE_AUTHJS_GOOGLE_PROVIDER is enabled. ' +
       'Provide a valid Google OAuth client secret.'
     );
   }
@@ -309,21 +354,26 @@ export function validateGoogleProviderCredentials(env: NodeJS.ProcessEnv): {
 
 ## Rollout Plan
 
-### Phase 1 — Provider Configuration Implementation (Next Task)
+### Phase 1 — Provider Configuration Implementation (Next Task: TASK-0036)
 
 | Step | Description | Risk |
 |---|---|---|
-| 1 | Create Google provider credential validation function | Low |
-| 2 | Add Google provider to route handler `providers` array | Low |
-| 3 | Add provider configuration tests | Low |
-| 4 | Add credential validation tests | Low |
-| 5 | Update scope guard tests for Google provider import | Low |
-| 6 | Create checkpoint document | Low |
+| 1 | Implement `ENABLE_AUTHJS_GOOGLE_PROVIDER` strict provider flag helper | Low |
+| 2 | Implement Google provider credential validation function | Low |
+| 3 | Wire Google provider into route handler `providers` array only when `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"` | Low |
+| 4 | Keep runtime enabled with no provider when provider flag is disabled | Low |
+| 5 | Add provider flag tests (strict semantics) | Low |
+| 6 | Add credential validation tests | Low |
+| 7 | Update scope guard tests for Google provider import | Low |
+| 8 | Create checkpoint document | Low |
 
 **Scope constraints for the next task:**
 
-- Only wire the Google provider into the existing route handler.
-- Only add credential validation.
+- Implement `ENABLE_AUTHJS_GOOGLE_PROVIDER` flag helper.
+- Implement Google credential validation.
+- Wire Google provider only when `ENABLE_AUTHJS_GOOGLE_PROVIDER === "true"`.
+- Keep Auth.js runtime enabled with empty providers when provider flag is disabled.
+- Do NOT wire Google directly under only `ENABLE_AUTHJS_RUNTIME`.
 - Do NOT create Google Cloud Console credentials.
 - Do NOT populate `.env` files with secrets.
 - Do NOT add login UI.
@@ -338,7 +388,7 @@ export function validateGoogleProviderCredentials(env: NodeJS.ProcessEnv): {
 |---|---|
 | 1 | Set up Google Cloud Console OAuth credentials for development |
 | 2 | Populate local `.env.local` with `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` |
-| 3 | Enable `ENABLE_AUTHJS_RUNTIME=true` locally |
+| 3 | Enable `ENABLE_AUTHJS_RUNTIME=true` and `ENABLE_AUTHJS_GOOGLE_PROVIDER=true` locally |
 | 4 | Test full OAuth flow: redirect → consent → callback → session |
 | 5 | Verify User creation through adapter wrapper |
 | 6 | Verify Account linking |
@@ -373,9 +423,9 @@ export function validateGoogleProviderCredentials(env: NodeJS.ProcessEnv): {
 
 | Failure | When | Behavior | Recovery |
 |---|---|---|---|
-| `AUTH_SECRET` missing/empty | Handler initialization | Throw Error, handler does not start | Set valid `AUTH_SECRET` in env, handler re-initializes on next request |
-| `AUTH_GOOGLE_ID` missing/empty | Handler initialization | Throw Error, handler does not start | Set valid `AUTH_GOOGLE_ID` in env, handler re-initializes on next request |
-| `AUTH_GOOGLE_SECRET` missing/empty | Handler initialization | Throw Error, handler does not start | Set valid `AUTH_GOOGLE_SECRET` in env, handler re-initializes on next request |
+| `AUTH_SECRET` missing/empty | Handler initialization (runtime enabled) | Throw Error, handler does not start | Set valid `AUTH_SECRET` in env, handler re-initializes on next request |
+| `AUTH_GOOGLE_ID` missing/empty | Handler initialization (runtime + provider enabled) | Throw Error, provider does not initialize | Set valid `AUTH_GOOGLE_ID` in env, handler re-initializes on next request |
+| `AUTH_GOOGLE_SECRET` missing/empty | Handler initialization (runtime + provider enabled) | Throw Error, provider does not initialize | Set valid `AUTH_GOOGLE_SECRET` in env, handler re-initializes on next request |
 
 ### OAuth Flow Failures
 
@@ -403,7 +453,9 @@ export function validateGoogleProviderCredentials(env: NodeJS.ProcessEnv): {
 |---|---|---|---|
 | `ENABLE_AUTHJS_RUNTIME` not set | Any request | Returns 501 `AUTHJS_RUNTIME_DISABLED` | Set `ENABLE_AUTHJS_RUNTIME=true` |
 | `ENABLE_AUTHJS_RUNTIME` set to non-`"true"` | Any request | Returns 501 `AUTHJS_RUNTIME_DISABLED` | Set exact string `"true"` |
-| Flag disabled after being enabled | Any request | Returns 501 immediately, cached handlers not returned | Re-enable flag or leave disabled |
+| Runtime flag disabled after being enabled | Any request | Returns 501 immediately, cached handlers not returned | Re-enable flag or leave disabled |
+| `ENABLE_AUTHJS_GOOGLE_PROVIDER` not set | Handler initialization | Auth.js runtime starts with no real providers | Set `ENABLE_AUTHJS_GOOGLE_PROVIDER=true` to activate Google |
+| `ENABLE_AUTHJS_GOOGLE_PROVIDER` set to non-`"true"` | Handler initialization | Auth.js runtime starts with no real providers | Set exact string `"true"` |
 
 ## Security Constraints
 
@@ -540,8 +592,8 @@ When a user signs in with Google OAuth:
 
 ## Decision
 
-Accepted Auth.js provider environment contract: Google OAuth as first provider, AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET as required environment variables, validation follows existing AUTH_SECRET pattern, no new feature flag, kill switch semantics preserved, and implementation deferred to next task.
+Accepted Google OAuth as first Auth.js provider candidate, with strict environment contract and provider implementation deferred.
 
 ## Recommended Next Task
 
-[Phase 2] TASK-0036: Auth.js Google OAuth provider wiring behind feature flag
+[Phase 2] TASK-0036: Implement Google provider configuration behind provider feature flag

@@ -21,14 +21,15 @@ None.
 
 ## Environment Variable Contract
 
-### Required (when `ENABLE_AUTHJS_RUNTIME=true`)
+### Required
 
-| Variable | Purpose | Status |
-|---|---|---|
-| `ENABLE_AUTHJS_RUNTIME` | Feature flag | Existing (TASK-0033) |
-| `AUTH_SECRET` | JWT signing/encryption key | Existing (TASK-0033) |
-| `AUTH_GOOGLE_ID` | Google OAuth client ID | New — contract defined |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret | New — contract defined |
+| Variable | Purpose | When Required | Status |
+|---|---|---|---|
+| `ENABLE_AUTHJS_RUNTIME` | Runtime feature flag | Always | Existing (TASK-0033) |
+| `ENABLE_AUTHJS_GOOGLE_PROVIDER` | Google provider feature flag | When Google provider rollout is desired | New — contract defined |
+| `AUTH_SECRET` | JWT signing/encryption key | When `ENABLE_AUTHJS_RUNTIME === "true"` | Existing (TASK-0033) |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID | When both runtime AND Google provider flags are `"true"` | New — contract defined |
+| `AUTH_GOOGLE_SECRET` | Google OAuth client secret | When both runtime AND Google provider flags are `"true"` | New — contract defined |
 
 ### Optional
 
@@ -41,20 +42,35 @@ None.
 
 Follows Auth.js v5 `AUTH_` prefix convention. Google provider auto-discovers `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
 
+### Runtime Behavior Matrix
+
+| `ENABLE_AUTHJS_RUNTIME` | `ENABLE_AUTHJS_GOOGLE_PROVIDER` | `AUTH_SECRET` | Google envs | Result |
+|---|---|---|---|---|
+| missing/false | any | any | any | Route disabled — 501 |
+| `"true"` | missing/false | valid | any | Auth.js enabled with no real provider |
+| `"true"` | `"true"` | missing | valid | Config error |
+| `"true"` | `"true"` | valid | missing | Provider config error |
+| `"true"` | `"true"` | valid | valid | Google provider configured |
+
 ## Validation Rules
 
 - `AUTH_SECRET`: Non-empty string after trim (existing `validateAuthjsSecret`).
-- `AUTH_GOOGLE_ID`: Non-empty string after trim (new validation function needed).
-- `AUTH_GOOGLE_SECRET`: Non-empty string after trim (new validation function needed).
+- `AUTH_GOOGLE_ID`: Non-empty string after trim (new validation, only when both runtime AND provider flags are `"true"`).
+- `AUTH_GOOGLE_SECRET`: Non-empty string after trim (new validation, only when both runtime AND provider flags are `"true"`).
 - All validation occurs at handler initialization time, not per-request.
-- Feature flag check remains per-request (kill switch).
+- Runtime feature flag check remains per-request (kill switch).
+- Provider feature flag is evaluated at initialization time.
 
 ## Feature-Flag Behavior
 
-- No new feature flag for Google provider.
-- `ENABLE_AUTHJS_RUNTIME` gates the entire auth runtime including all providers.
-- Kill switch semantics preserved — flag checked before cache on every request.
-- Per-provider flags deferred until multiple providers are active simultaneously.
+- `ENABLE_AUTHJS_RUNTIME` gates the entire Auth.js runtime (existing).
+- `ENABLE_AUTHJS_GOOGLE_PROVIDER` gates the Google provider specifically (new).
+- Both flags use strict exact `"true"` semantics — no trimming, no case normalization, no numeric truthy.
+- Runtime disabled → 501 response.
+- Runtime enabled + provider disabled → Auth.js runtime with empty providers.
+- Runtime enabled + provider enabled → Google credentials required and provider configured.
+- Kill switch semantics preserved — runtime flag checked before cache on every request.
+- Provider flag evaluated at initialization time, not per-request.
 
 ## Callback Boundaries
 
@@ -68,7 +84,7 @@ Follows Auth.js v5 `AUTH_` prefix convention. Google provider auto-discovers `AU
 
 | Phase | Scope | Task |
 |---|---|---|
-| Phase 1 | Provider configuration implementation (wire Google, add validation) | TASK-0036 |
+| Phase 1 | Provider configuration implementation (provider flag, credential validation, wire Google behind provider flag) | TASK-0036 |
 | Phase 2 | Local E2E verification (Google Cloud Console, real OAuth flow) | Future |
 | Phase 3 | Request context integration (production resolver) | Future |
 | Phase 4 | Production hardening (cookies, CSRF, session rotation, audit) | Future |
@@ -97,7 +113,7 @@ Follows Auth.js v5 `AUTH_` prefix convention. Google provider auto-discovers `AU
 - Environment variable naming convention closed — `AUTH_` prefix per Auth.js v5.
 - Provider credential validation pattern closed — follows existing `validateAuthjsSecret` pattern.
 - Callback routing confirmed — existing catch-all route handles all callbacks.
-- Per-provider feature flag decision closed — not needed for single provider.
+- Per-provider feature flag decision closed — `ENABLE_AUTHJS_GOOGLE_PROVIDER` accepted for safe rollout.
 - Account linking behavior documented for Google OAuth.
 
 ## Checks Run
@@ -115,11 +131,11 @@ None.
 
 ## Decision
 
-Accepted Auth.js provider environment contract: Google OAuth as first provider, AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET as required environment variables, validation follows existing AUTH_SECRET pattern, no new feature flag, kill switch semantics preserved, and implementation deferred to next task.
+Accepted Google OAuth as first Auth.js provider candidate, with strict environment contract and provider implementation deferred.
 
 ## Recommended Next Task
 
-[Phase 2] TASK-0036: Auth.js Google OAuth provider wiring behind feature flag
+[Phase 2] TASK-0036: Implement Google provider configuration behind provider feature flag
 
 ## Scope Confirmation
 
