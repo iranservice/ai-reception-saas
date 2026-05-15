@@ -17,9 +17,9 @@ None. This is a documentation-only task.
 
 ### Proposed Resolver Architecture
 
-- New adapter factory: `createAuthjsRequestContextAdapter` accepting injected `auth()` function and `tenancyRepository`
-- `resolveAuthenticated`: calls `auth()` → extracts `session.user.id` → returns `AuthenticatedUserRequestContext`
-- `resolveTenant`: combines authenticated user ID + `x-business-id` header + membership lookup → returns `TenantRequestContext`
+- New adapter factory: `createAuthjsRequestContextAdapter` accepting request-aware `auth(request)` and neutral `TenantMembershipResolver` interface
+- `resolveAuthenticated`: calls `auth(request)` → extracts `session.user.id` → returns `AuthenticatedUserRequestContext`
+- `resolveTenant`: combines authenticated user ID + tenant source (route param priority, then `x-business-id` header) + membership lookup → returns `TenantRequestContext`
 - `resolveSystem`: remains separate from Auth.js (API key / service token)
 
 ### Feature Flag Strategy
@@ -47,7 +47,7 @@ None. This is a documentation-only task.
 
 ### Open Design Questions
 
-1. Tenant identifier mechanism: `x-business-id` header vs URL path parameter (recommend header)
+1. Tenant identifier source order: resolved — route param `businessId` priority, then `x-business-id` header, mismatch is an error
 2. JWT enrichment scope: cache membership in JWT vs per-request DB lookup (recommend per-request)
 3. System context production mechanism: API key vs service token vs mTLS (deferred)
 
@@ -83,7 +83,7 @@ None. This is a documentation-only task.
 
 ## Decision
 
-Accepted Auth.js request-context resolver design; JWT callback prerequisite identified, per-request tenant lookup recommended, production rollout deferred.
+Accepted Auth.js request-context resolver design with request-aware session resolution, neutral tenant membership interface, and explicit tenant source priority; JWT callback prerequisite confirmed, production rollout deferred.
 
 ## Recommended Next Task
 

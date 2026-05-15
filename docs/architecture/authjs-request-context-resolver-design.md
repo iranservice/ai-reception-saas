@@ -96,50 +96,72 @@ This design document explicitly excludes:
 A future implementation task will create:
 
 ```ts
+interface TenantMembershipResolver {
+  findMembershipForUserBusiness(input: {
+    userId: string;
+    businessId: string;
+  }): Promise<Result<TenantContext | null, DomainError>>;
+}
+
 function createAuthjsRequestContextAdapter(options: {
-  auth: () => Promise<AuthjsSession | null>;
-  tenancyRepository: TenancyRepository;
+  auth: (request: Request) => Promise<AuthjsSession | null>;
+  tenantMembershipResolver: TenantMembershipResolver;
   env?: Record<string, string | undefined>;
 }): AuthContextAdapter
 ```
 
 Where:
-- `auth` is the `auth()` function from `NextAuth()` result — retrieves the current JWT session
-- `tenancyRepository` is injected for membership lookups
+- `auth` receives the incoming `Request` and returns the JWT session — the resolver must be request-aware because Auth.js reads session cookies from the request headers
+- `tenantMembershipResolver` is a neutral interface for membership lookups — not coupled to a specific repository implementation
 - `env` allows test-time environment override
 
 ### Adapter Behavior
 
 #### `resolveAuthenticated(request)`
 
-1. Call `auth()` to retrieve the current session.
+1. Call `auth(request)` to retrieve the current session from the request's cookies.
 2. If no session or no `session.user` → return `UNAUTHENTICATED` (401).
 3. If session exists and `session.user.id` is present → return `AuthenticatedUserRequestContext` with the user ID.
 4. If `session.user.id` is missing → return `INVALID_AUTH_CONTEXT` (400) — indicates a misconfigured JWT callback.
 
 ```
-Request → auth() → session.user.id → AuthenticatedUserRequestContext
-                 → null             → UNAUTHENTICATED (401)
+Request → auth(request) → session.user.id → AuthenticatedUserRequestContext
+                        → null             → UNAUTHENTICATED (401)
 ```
 
 #### `resolveTenant(request)`
 
 1. Call `resolveAuthenticated(request)` first to get the user ID.
 2. If unauthenticated → propagate the failure.
-3. Read the tenant identifier from the request:
-   - **Option A (header):** `x-business-id` header — tenant is selected per-request.
-   - **Option B (path):** extract from URL path segment (e.g. `/api/businesses/:id/...`).
-   - **Recommendation:** Use header approach for consistency across all API routes.
-4. If no tenant identifier provided → return `TENANT_CONTEXT_REQUIRED` (403).
-5. Look up `BusinessMembership` where `userId` matches and `businessId` matches.
-6. If no membership found → return `ACCESS_DENIED` (403).
-7. If membership found → return `TenantRequestContext` with `userId`, `businessId`, `membershipId`, and `role`.
+3. Resolve the tenant identifier (business ID) from the request using the following **strict source order**:
+
+   | Priority | Source | When Used | Example |
+   |---|---|---|---|
+   | 1 | Route parameter `businessId` | Business-scoped routes | `/api/businesses/:businessId/...` |
+   | 2 | `x-business-id` header | Generic routes needing tenant scope | Any route |
+   | — | Query / body | **Not accepted** | — |
+   | — | Session / JWT | **Must not silently choose** | — |
+   | — | Last-used tenant | **Deferred** | — |
+
+   **Why this order:**
+   - Prevents confused-deputy attacks: URL path is the explicit resource scope; a header cannot override it
+   - Avoids mismatch between URL `businessId` and header `businessId`
+   - Keeps tenant authorization explicit — the client states which tenant it intends
+   - Avoids stale JWT tenant claims that could reference revoked memberships
+   - Fits the current route structure where business-scoped routes already include `businessId` in the path
+
+4. If route param and header both present and differ → return `INVALID_AUTH_CONTEXT` (400) with mismatch message.
+5. If no tenant identifier found from any accepted source → return `TENANT_CONTEXT_REQUIRED` (403).
+6. Call `tenantMembershipResolver.findMembershipForUserBusiness({ userId, businessId })`.
+7. If no membership found → return `ACCESS_DENIED` (403).
+8. If membership found → return `TenantRequestContext` with `userId`, `businessId`, `membershipId`, and `role`.
 
 ```
-Request → auth() → userId + x-business-id header
-                 → tenancyRepository.findMembership(userId, businessId)
-                 → found    → TenantRequestContext
-                 → not found → ACCESS_DENIED (403)
+Request → auth(request) → userId
+        → route param OR x-business-id header → businessId
+        → tenantMembershipResolver.findMembershipForUserBusiness(userId, businessId)
+        → found    → TenantRequestContext
+        → not found → ACCESS_DENIED (403)
 ```
 
 #### `resolveSystem(request)`
@@ -169,12 +191,14 @@ export function getDefaultAuthContextAdapter(): AuthContextAdapter {
   if (isAuthjsRequestContextEnabled()) {
     return createAuthjsRequestContextAdapter({
       auth: getAuthjsAuth(),
-      tenancyRepository: getApiDependencies().repositories.tenancy,
+      tenantMembershipResolver: getTenantMembershipResolver(),
     });
   }
   return createDevHeaderAuthContextAdapter();
 }
 ```
+
+Where `getTenantMembershipResolver()` returns an implementation of `TenantMembershipResolver` backed by the current tenancy infrastructure. The concrete wiring is an implementation detail deferred to the implementation task.
 
 ### Auth.js `auth()` Access
 
@@ -232,7 +256,8 @@ Without this, `resolveAuthenticated` will always fail with `INVALID_AUTH_CONTEXT
 |---|---|---|---|
 | No session | `UNAUTHENTICATED` | 401 | No valid JWT cookie/token |
 | Session without user ID | `INVALID_AUTH_CONTEXT` | 400 | JWT callback misconfigured |
-| No tenant ID header | `TENANT_CONTEXT_REQUIRED` | 403 | Tenant scope not specified |
+| No tenant identifier | `TENANT_CONTEXT_REQUIRED` | 403 | No route param or header |
+| Route param / header mismatch | `INVALID_AUTH_CONTEXT` | 400 | Conflicting tenant identifiers |
 | No membership | `ACCESS_DENIED` | 403 | User has no membership in tenant |
 | Runtime disabled + context enabled | Configuration error | 500 | `auth()` not available |
 
@@ -242,9 +267,9 @@ Without this, `resolveAuthenticated` will always fail with `INVALID_AUTH_CONTEXT
 
 ### Unit Tests (no DB, no Auth.js)
 
-1. **Mock `auth()`** to return various session shapes (valid, null, missing user ID).
-2. **Mock `tenancyRepository`** to return or reject membership lookups.
-3. Test all error paths and success paths.
+1. **Mock `auth(request)`** to return various session shapes (valid, null, missing user ID).
+2. **Mock `tenantMembershipResolver`** to return or reject membership lookups.
+3. Test all error paths and success paths including tenant source priority and mismatch detection.
 4. Test feature flag gating.
 
 ### Integration Tests (with DB, no real OAuth)
@@ -280,8 +305,9 @@ Without this, `resolveAuthenticated` will always fail with `INVALID_AUTH_CONTEXT
 
 ### Phase 3: Tenant Resolution
 
-- Wire tenancy repository into the adapter
-- Implement `x-business-id` header reading
+- Implement `TenantMembershipResolver` backed by tenancy infrastructure
+- Implement tenant source priority: route param → `x-business-id` header
+- Implement route param / header mismatch detection
 - Membership lookup and role extraction
 - Test tenant context resolution
 
@@ -341,13 +367,9 @@ Without this, `resolveAuthenticated` will always fail with `INVALID_AUTH_CONTEXT
 
 ## Open Design Questions
 
-### 1. Tenant Identifier Mechanism
+### 1. Tenant Identifier Source Order
 
-**Question:** Should tenant context use `x-business-id` header or URL path parameter?
-
-**Current recommendation:** Header (`x-business-id`) for consistency. Path-based routing would require route-level parsing per endpoint.
-
-**Decision:** Deferred to implementation task.
+**Resolved:** Route param `businessId` takes priority over `x-business-id` header. Both present with different values is an error. Query/body tenant scope is not accepted. Session/JWT must not silently choose a tenant. Last-used tenant is deferred.
 
 ### 2. JWT Enrichment Scope
 
@@ -387,3 +409,4 @@ Without this, `resolveAuthenticated` will always fail with `INVALID_AUTH_CONTEXT
 | Version | Date | Description |
 |---|---|---|
 | 1.0 | 2026-05-15 | Initial design — TASK-0038 |
+| 1.1 | 2026-05-15 | CTO review: fix tenant scope order, neutral resolver interface, request-aware auth |
