@@ -69,8 +69,8 @@ export interface AuthjsRouteHandlerOutput {
   GET: (req: NextRequest) => Promise<Response>;
   /** POST handler for [...nextauth] route */
   POST: (req: NextRequest) => Promise<Response>;
-  /** Auth.js session reader — null when disabled */
-  auth: ((...args: unknown[]) => unknown) | null;
+  /** Auth.js request-aware session reader — null when disabled */
+  auth: ((request: Request) => Promise<Record<string, unknown> | null>) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,26 +158,38 @@ export function createAuthjsRouteHandlers(
     callbacks: {
       async jwt({ token, user }) {
         // On sign-in, the user object from DB is present.
-        // Persist user.id into the JWT so session can read it.
+        // Auth.js standard: token.sub holds the user's internal ID.
+        // We ensure it is set from user.id on sign-in.
         if (user?.id) {
-          token.userId = user.id;
+          token.sub = user.id;
         }
         return token;
       },
       async session({ session, token }) {
-        // Thread user.id from JWT token into session.user.id
-        if (token.userId && session.user) {
-          session.user.id = token.userId as string;
+        // Thread user.id from JWT token.sub into session.user.id
+        // token.sub is the Auth.js standard subject claim.
+        if (token.sub && session.user) {
+          session.user.id = token.sub;
         }
         return session;
       },
     },
   });
 
+  // Wrap NextAuth's overloaded auth() into a request-aware function.
+  // NextAuth's auth has many overloaded signatures; we narrow it to
+  // a single (request: Request) => Promise<session | null> contract.
+  const requestAwareAuth = async (
+    request: Request,
+  ): Promise<Record<string, unknown> | null> => {
+    const session = await nextAuth.auth(request as never);
+    return session as Record<string, unknown> | null;
+  };
+
   return {
     enabled: true,
     GET: nextAuth.handlers.GET,
     POST: nextAuth.handlers.POST,
-    auth: nextAuth.auth,
+    auth: requestAwareAuth,
   };
 }

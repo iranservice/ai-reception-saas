@@ -227,11 +227,11 @@ describe('resolveAuthenticated — no session', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Blocker 5 — auth(request) throws
+// 5. auth(request) throws — infrastructure error→500
 // ---------------------------------------------------------------------------
 
 describe('resolveAuthenticated — auth throws', () => {
-  it('returns 401 UNAUTHENTICATED when auth(request) throws', async () => {
+  it('returns 500 INTERNAL_SERVER_ERROR when auth(request) throws', async () => {
     const auth = vi.fn(async () => {
       throw new Error('Auth.js internal error');
     }) as AuthjsSessionReader;
@@ -240,14 +240,14 @@ describe('resolveAuthenticated — auth throws', () => {
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.response.status).toBe(401);
+      expect(result.response.status).toBe(500);
       const body = await result.response.json();
-      expect(body.error.code).toBe('UNAUTHENTICATED');
+      expect(body.error.code).toBe('INTERNAL_SERVER_ERROR');
       expect(body.error.message).toBe(AUTHJS_SESSION_READ_FAILED_MESSAGE);
     }
   });
 
-  it('does not return 500 when auth throws', async () => {
+  it('does not return 401 when auth throws (infrastructure != no-session)', async () => {
     const auth = vi.fn(async () => {
       throw new TypeError('Cannot read properties of undefined');
     }) as AuthjsSessionReader;
@@ -256,8 +256,8 @@ describe('resolveAuthenticated — auth throws', () => {
     const result = await adapter.resolveAuthenticated(makeRequest());
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // Must be 401, NOT 500
-      expect(result.response.status).toBe(401);
+      // Must be 500, NOT 401 — infrastructure failures are not “no session”
+      expect(result.response.status).toBe(500);
     }
   });
 });
@@ -576,7 +576,7 @@ describe('TASK-0039 scope guards', () => {
     expect(dirs).toEqual([]);
   });
 
-  it('authjs-route-handlers.ts includes jwt and session callbacks', () => {
+  it('authjs-route-handlers.ts includes jwt and session callbacks using token.sub', () => {
     const content = fs.readFileSync(
       path.join(PROJECT_ROOT, 'src/lib/auth/authjs-route-handlers.ts'),
       'utf-8',
@@ -584,7 +584,9 @@ describe('TASK-0039 scope guards', () => {
     expect(content).toContain('callbacks');
     expect(content).toContain('async jwt(');
     expect(content).toContain('async session(');
-    expect(content).toContain('token.userId');
+    expect(content).toContain('token.sub');
+    // Must NOT use custom token.userId
+    expect(content).not.toContain('token.userId');
   });
 
   it('authjs-route-handlers.ts does not call setAuthjsAuth', () => {

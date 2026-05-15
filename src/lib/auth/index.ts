@@ -90,6 +90,7 @@ export {
   getEnabledAuthjsRuntime,
   readAuthjsSession,
   resetAuthjsRuntimeForTests,
+  AuthjsSessionReadError,
   type AuthjsRuntimeOutput,
   type AuthjsSessionLike,
 } from './authjs-runtime';

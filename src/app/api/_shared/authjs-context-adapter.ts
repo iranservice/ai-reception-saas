@@ -217,7 +217,8 @@ export function createAuthjsRequestContextAdapter(
       }
 
       // Read session from request cookies via Auth.js auth()
-      // Catch thrown errors — fail to UNAUTHENTICATED, not 500
+      // Infrastructure errors (runtime init, auth missing, auth throws)
+      // are surfaced as 500 INTERNAL_SERVER_ERROR — not masked as 401.
       let session: AuthjsSessionLike | null;
       try {
         session = await auth(request);
@@ -225,9 +226,9 @@ export function createAuthjsRequestContextAdapter(
         return {
           ok: false,
           response: apiError(
-            'UNAUTHENTICATED',
+            'INTERNAL_SERVER_ERROR',
             AUTHJS_SESSION_READ_FAILED_MESSAGE,
-            401,
+            500,
           ),
         };
       }

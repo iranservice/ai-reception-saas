@@ -55,6 +55,21 @@ export interface AuthjsRuntimeOutput {
 }
 
 // ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when an Auth.js session read fails due to infrastructure errors.
+ * Distinguishes infrastructure failures from legitimate "no session" results.
+ */
+export class AuthjsSessionReadError extends Error {
+  constructor() {
+    super('Auth.js session read failed');
+    this.name = 'AuthjsSessionReadError';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Module-level cache
 // ---------------------------------------------------------------------------
 
@@ -109,20 +124,29 @@ export async function getEnabledAuthjsRuntime(): Promise<AuthjsRuntimeOutput> {
  * It lazily initializes the Auth.js runtime (if not already cached),
  * calls `auth(request)`, and returns the session or null.
  *
- * If the runtime is disabled or auth throws, returns null (fail-safe).
+ * Infrastructure failures (runtime disabled, auth missing, auth throws)
+ * are NOT swallowed. They throw `AuthjsSessionReadError` so the adapter
+ * can distinguish "no session" from "broken infrastructure".
+ *
+ * Only a genuine Auth.js "no session" result returns `null`.
  *
  * @param request - Incoming HTTP request with cookies
+ * @throws {AuthjsRuntimeDisabledError} if runtime is disabled
+ * @throws {AuthjsSessionReadError} if auth is missing or auth(request) throws
  */
 export async function readAuthjsSession(
   request: Request,
 ): Promise<AuthjsSessionLike | null> {
+  const runtime = await getEnabledAuthjsRuntime();
+
+  if (!runtime.auth) {
+    throw new AuthjsSessionReadError();
+  }
+
   try {
-    const runtime = await getEnabledAuthjsRuntime();
-    if (!runtime.auth) return null;
     return await runtime.auth(request);
   } catch {
-    // Runtime disabled or auth threw — fail-safe to null
-    return null;
+    throw new AuthjsSessionReadError();
   }
 }
 

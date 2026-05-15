@@ -20,7 +20,8 @@ The Auth.js runtime is a shared lazy singleton in `authjs-runtime.ts`. Both the 
 ```
 authjs-runtime.ts (shared lazy runtime)
   ├── getEnabledAuthjsRuntime()  → lazily creates and caches NextAuth
-  ├── readAuthjsSession(request) → fail-safe session reader
+  ├── readAuthjsSession(request) → throws on infrastructure error, null on no-session
+  ├── AuthjsSessionReadError     → controlled error for infrastructure failures
   └── resetAuthjsRuntimeForTests()
 
 /api/auth/[...nextauth]/route.ts
@@ -67,18 +68,24 @@ Request-context does NOT depend on the auth route being hit first.
 | 2 | `authjs-runtime.ts` was only a getter/setter | Rewritten as shared lazy runtime with `getEnabledAuthjsRuntime()` |
 | 3 | Route owned local `cachedEnabledHandlers` | Route delegates to shared runtime — no local cache |
 | 4 | Adapter did not enforce `ENABLE_AUTHJS_REQUEST_CONTEXT` | Added as first gate in `resolveAuthenticated` |
-| 5 | Adapter did not catch `auth(request)` errors | Wrapped in try/catch → returns 401 UNAUTHENTICATED |
+| 5 | Adapter did not catch `auth(request)` errors | Wrapped in try/catch → returns 500 INTERNAL_SERVER_ERROR |
 | 6 | `session.user.id` validated with trim but raw value used | Now uses `userId.trim()` as the resolved value |
-| 7 | Session callback did not populate `session.user.id` | Added JWT and session callbacks to thread `user.id` |
+| 7 | Session callback did not populate `session.user.id` | JWT callback sets `token.sub` from `user.id`; session callback threads `token.sub` → `session.user.id` |
+| 8 | `auth(request)` thrown errors returned 401 not 500 | Adapter returns 500 INTERNAL_SERVER_ERROR for infrastructure failures |
+| 9 | `readAuthjsSession()` swallowed all errors as null | Throws `AuthjsSessionReadError` for infrastructure failures; only genuine no-session returns null |
+| 10 | JWT callbacks used custom `token.userId` | Switched to Auth.js standard `token.sub` → `session.user.id` |
+| 11 | `AuthjsRouteHandlerOutput.auth` was broad `(...args) => unknown` | Narrowed to request-aware `(request: Request) => Promise<Record | null>` via wrapper |
+| 12 | Tests locked in wrong 401 behavior for thrown auth errors | Updated to expect 500 INTERNAL_SERVER_ERROR |
 
 ## Design Decisions
 
 1. **Shared lazy runtime**: `authjs-runtime.ts` is the single owner of NextAuth initialization. Both route and adapter consume it.
 2. **No circular imports**: `authjs-context-adapter.ts` uses dynamic `import()` for the runtime to avoid triggering the `next-auth` dependency chain at module load time.
 3. **Dual flag enforcement**: `resolveAuthenticated` checks both `ENABLE_AUTHJS_REQUEST_CONTEXT` AND `ENABLE_AUTHJS_RUNTIME` before calling `auth()`.
-4. **Fail-safe session reading**: `readAuthjsSession` catches all errors and returns null. The adapter separately catches errors and returns 401.
+4. **Strict error semantics**: `readAuthjsSession` throws `AuthjsSessionReadError` for infrastructure failures (runtime init, missing auth, auth throws). Only genuine Auth.js "no session" returns null. The adapter catches these and returns 500 INTERNAL_SERVER_ERROR.
 5. **Trimmed userId**: `session.user.id` is trimmed before use. Whitespace-only IDs are rejected with 400.
-6. **JWT+session callbacks**: `jwt` callback persists `user.id` into `token.userId`; `session` callback threads it into `session.user.id`.
+6. **Standard token.sub contract**: JWT callback sets `token.sub` from `user.id` (Auth.js standard subject claim); session callback threads `token.sub` → `session.user.id`.
+7. **Request-aware auth wrapper**: `AuthjsRouteHandlerOutput.auth` is narrowed from NextAuth's overloaded signatures to `(request: Request) => Promise<Record | null>` via a wrapper function.
 
 ## Checks Run
 
