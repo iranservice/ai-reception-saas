@@ -11,49 +11,47 @@
 
 ## Summary
 
-Adds 15 integration smoke tests proving protected API handlers work correctly with Auth.js-style tenant request-context resolution injected via handler factories. No source code changes.
+Adds 15 integration smoke tests proving protected API handlers work correctly with the **real** Auth.js request-context adapter (`createAuthjsRequestContextAdapter`). Tests inject a real adapter instance — with mocked `AuthjsSessionReader` and `TenantMembershipResolver` — into handler factories, exercising the full pipeline: feature-flag gates → session read → scope resolution → businessId normalization → membership lookup → error mapping → handler logic. No source code changes.
 
 ## Test File
 
 `__tests__/api/authjs-protected-handler-smoke.test.ts`
 
+## Test Design
+
+Tests use `createRealAdapter()` which calls the real `createAuthjsRequestContextAdapter` factory with:
+
+- `auth: AuthjsSessionReader` — mock function returning session or null
+- `tenantMembershipResolver: TenantMembershipResolver` — mock function returning `ActionResult<TenantContext>`
+- `env` — both `ENABLE_AUTHJS_REQUEST_CONTEXT` and `ENABLE_AUTHJS_RUNTIME` set to `'true'`
+
+The real adapter's `resolveTenant(request, scope?)` and `resolveAuthenticated(request)` are injected into handler factories via `tenantResolverFromAdapter()` / `authResolverFromAdapter()` wrappers. This ensures all adapter logic (flag gates, scope priority, normalization, error mapping) is exercised — not simulated.
+
 ## Coverage Matrix
 
 | ID | Handler | Scenario | Expected |
 |---|---|---|---|
-| A1 | GET business by ID | Auth.js session + route param + membership + authz | 200 |
-| A2 | PATCH business by ID | Route param canonical, mismatched header ignored | 200 |
-| B3 | GET memberships | Auth.js tenant context success | 200 |
-| B4 | POST membership | Body validated, service called with businessId | 200 |
-| B5 | PATCH membership role | Route param wins, authz checked before service | 200 |
-| C6 | GET audit events | Auth.js tenant + authz audit.read | 200 |
-| C7 | GET audit event by ID | Event belongs to business | 200 |
-| D8 | POST authz/evaluate | x-business-id header fallback (no route param) | 200 |
-| D9 | POST authz/require | Denied result returns ok (not error) | 200 |
-| E10 | GET business (no session) | UNAUTHENTICATED | 401 |
-| E11 | GET business (empty user.id) | INVALID_AUTH_CONTEXT | 400 |
-| E12 | GET memberships (mismatch header) | Route param wins | 200 |
-| E13 | Resolver (blank route-param) | TENANT_CONTEXT_REQUIRED | 403 |
-| E14 | POST authz/evaluate (no header) | TENANT_CONTEXT_REQUIRED | 403 |
-| E15 | GET audit events (denied membership) | ACCESS_DENIED, no service call | 403 |
-
-## Test Design
-
-Tests use a `createAuthjsTenantResolver()` helper that simulates the Auth.js adapter behavior:
-
-- Route-param scope isolation (never falls back to header)
-- Header fallback for generic routes
-- Session null → UNAUTHENTICATED 401
-- Empty user.id → INVALID_AUTH_CONTEXT 400
-- Membership denied → ACCESS_DENIED 403
-
-Handlers are exercised through their factory functions with injected mock services and the simulated Auth.js resolver. This tests the handler → context resolution → authz → service pipeline without requiring the Next.js runtime.
+| A1 | GET business by ID | Real adapter + session + membership + authz | 200 |
+| A2 | PATCH business by ID | Route param canonical, mismatched header ignored by real adapter | 200 |
+| B3 | GET memberships | Real adapter tenant context success | 200 |
+| B4 | POST membership | Body validated, service called with correct businessId | 200 |
+| B5 | PATCH membership role | Route param wins in real adapter, authz before service | 200 |
+| C6 | GET audit events | Real adapter tenant + authz audit.read | 200 |
+| C7 | GET audit event by ID | Event belongs to business via real adapter | 200 |
+| D8 | POST authz/evaluate | x-business-id header fallback in real adapter (no route param) | 200 |
+| D9 | POST authz/require | Denied result returns ok (decision, not error) | 200 |
+| E10 | GET business (null session) | Real adapter → UNAUTHENTICATED | 401 |
+| E11 | GET business (empty user.id) | Real adapter → INVALID_AUTH_CONTEXT | 400 |
+| E12 | GET memberships (mismatched header) | Real adapter uses route param, not header | 200 |
+| E13 | Real adapter (blank route-param) | Route-param isolation → TENANT_CONTEXT_REQUIRED | 403 |
+| E14 | POST authz/evaluate (no header) | Real adapter → TENANT_CONTEXT_REQUIRED | 403 |
+| E15 | GET audit events (denied membership) | Real adapter → ACCESS_DENIED, no service call | 403 |
 
 ## Files Changed
 
 | File | Change |
 |---|---|
-| `__tests__/api/authjs-protected-handler-smoke.test.ts` | [NEW] 15 smoke tests |
+| `__tests__/api/authjs-protected-handler-smoke.test.ts` | [NEW] 15 smoke tests using real adapter |
 | `docs/checkpoints/TASK-0041-authjs-request-context-protected-handler-smoke-tests.md` | [NEW] Checkpoint |
 
 ## Files Not Changed
@@ -81,7 +79,7 @@ Handlers are exercised through their factory functions with injected mock servic
 
 ## Decision
 
-Accepted Auth.js request-context protected handler smoke tests; no runtime changes, test-only task.
+Accepted Auth.js request-context protected handler smoke tests using real adapter; no runtime changes, test-only task.
 
 ## Recommended Next Task
 
