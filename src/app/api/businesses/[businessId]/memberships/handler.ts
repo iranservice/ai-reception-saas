@@ -19,6 +19,7 @@ import {
 import {
   resolveTenantRequestContext,
   type TenantRequestContext,
+  type TenantRequestScope,
   type ContextResult,
 } from '@/app/api/_shared/request-context';
 import { apiError } from '@/app/api/_shared/responses';
@@ -83,6 +84,7 @@ export interface BusinessMembershipsHandlerDeps {
   readonly authzService: Pick<AuthzService, 'requirePermission'>;
   readonly resolveTenantContext?: (
     request: Request,
+    scope?: TenantRequestScope,
   ) => Promise<ContextResult<TenantRequestContext>>;
   readonly now?: () => Date;
 }
@@ -152,10 +154,7 @@ export function createGetBusinessMembershipsHandler(
   deps: BusinessMembershipsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(
       params,
       businessIdParamsSchema,
@@ -165,6 +164,13 @@ export function createGetBusinessMembershipsHandler(
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;
@@ -199,10 +205,7 @@ export function createPostBusinessMembershipsHandler(
   deps: BusinessMembershipsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(
       params,
       businessIdParamsSchema,
@@ -212,6 +215,13 @@ export function createPostBusinessMembershipsHandler(
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;
@@ -255,10 +265,7 @@ export function createPatchMembershipRoleHandler(
   deps: BusinessMembershipsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(
       params,
       businessMembershipParamsSchema,
@@ -268,6 +275,13 @@ export function createPatchMembershipRoleHandler(
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId, membershipId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;
@@ -317,10 +331,7 @@ export function createPatchMembershipStatusHandler(
   deps: BusinessMembershipsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(
       params,
       businessMembershipParamsSchema,
@@ -330,6 +341,13 @@ export function createPatchMembershipStatusHandler(
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId, membershipId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;
@@ -379,10 +397,7 @@ export function createDeleteMembershipHandler(
   deps: BusinessMembershipsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(
       params,
       businessMembershipParamsSchema,
@@ -392,6 +407,13 @@ export function createDeleteMembershipHandler(
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId, membershipId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;

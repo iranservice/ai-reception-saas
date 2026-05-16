@@ -19,6 +19,7 @@ import {
   createTenantRequestContext,
   type AuthenticatedUserRequestContext,
   type TenantRequestContext,
+  type TenantRequestScope,
   type ContextResult,
 } from '@/app/api/_shared/request-context';
 import { apiError } from '@/app/api/_shared/responses';
@@ -111,14 +112,14 @@ function successAuthResolver(
 
 function successTenantResolver(
   opts: { userId?: string; businessId?: string; membershipId?: string; role?: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' } = {},
-): (req: Request) => Promise<ContextResult<TenantRequestContext>> {
-  return async () => ({
+): (req: Request, scope?: TenantRequestScope) => Promise<ContextResult<TenantRequestContext>> {
+  return async (_req, scope?) => ({
     ok: true as const,
     context: createTenantRequestContext({
       requestId: null,
       tenant: {
         userId: opts.userId ?? USER_ID,
-        businessId: opts.businessId ?? BUSINESS_ID,
+        businessId: scope?.businessId ?? opts.businessId ?? BUSINESS_ID,
         membershipId: opts.membershipId ?? MEMBERSHIP_ID,
         role: opts.role ?? 'OWNER',
       },
@@ -253,13 +254,17 @@ describe('createGetBusinessByIdHandler', () => {
     expect(s.authzService.requirePermission).not.toHaveBeenCalled();
   });
 
-  it('rejects route businessId mismatch with TENANT_ACCESS_DENIED', async () => {
+  it('passes route businessId as scope to tenant resolver', async () => {
     const s = createMockServices();
-    const h = createGetBusinessByIdHandler({ ...s, resolveTenantContext: successTenantResolver({ businessId: BUSINESS_ID }) });
-    const res = await h(new Request('http://localhost/api/businesses/' + OTHER_BUSINESS_ID), { businessId: OTHER_BUSINESS_ID });
-    expect(res.status).toBe(403);
-    expect((await res.json()).error.code).toBe('TENANT_ACCESS_DENIED');
-    expect(s.authzService.requirePermission).not.toHaveBeenCalled();
+    s.authzService.requirePermission.mockResolvedValue(ok({ allowed: true }));
+    s.tenancyService.findBusinessById.mockResolvedValue(ok(MOCK_BUSINESS));
+    const resolver = vi.fn(successTenantResolver());
+    const h = createGetBusinessByIdHandler({ ...s, resolveTenantContext: resolver });
+    await h(new Request('http://localhost/api/businesses/' + BUSINESS_ID), { businessId: BUSINESS_ID });
+    expect(resolver).toHaveBeenCalledWith(
+      expect.any(Request),
+      { businessId: BUSINESS_ID, source: 'route-param' },
+    );
   });
 
   it('returns ACCESS_DENIED when authz denies', async () => {
@@ -317,12 +322,17 @@ describe('createPatchBusinessByIdHandler', () => {
     expect((await res.json()).error.code).toBe('INVALID_TENANCY_INPUT');
   });
 
-  it('rejects route businessId mismatch with TENANT_ACCESS_DENIED', async () => {
+  it('passes route businessId as scope to tenant resolver', async () => {
     const s = createMockServices();
-    const h = createPatchBusinessByIdHandler({ ...s, resolveTenantContext: successTenantResolver({ businessId: BUSINESS_ID }) });
-    const res = await h(makeJsonRequest({ name: 'New' }), { businessId: OTHER_BUSINESS_ID });
-    expect(res.status).toBe(403);
-    expect((await res.json()).error.code).toBe('TENANT_ACCESS_DENIED');
+    s.authzService.requirePermission.mockResolvedValue(ok({ allowed: true }));
+    s.tenancyService.updateBusiness.mockResolvedValue(ok(MOCK_BUSINESS));
+    const resolver = vi.fn(successTenantResolver());
+    const h = createPatchBusinessByIdHandler({ ...s, resolveTenantContext: resolver });
+    await h(makeJsonRequest({ name: 'New' }), { businessId: BUSINESS_ID });
+    expect(resolver).toHaveBeenCalledWith(
+      expect.any(Request),
+      { businessId: BUSINESS_ID, source: 'route-param' },
+    );
   });
 
   it('returns ACCESS_DENIED when authz denies', async () => {

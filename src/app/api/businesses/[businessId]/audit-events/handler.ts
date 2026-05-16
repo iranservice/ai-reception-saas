@@ -18,6 +18,7 @@ import {
 import {
   resolveTenantRequestContext,
   type TenantRequestContext,
+  type TenantRequestScope,
   type ContextResult,
 } from '@/app/api/_shared/request-context';
 import { apiError } from '@/app/api/_shared/responses';
@@ -54,6 +55,7 @@ export interface AuditEventsHandlerDeps {
   readonly authzService: Pick<AuthzService, 'requirePermission'>;
   readonly resolveTenantContext?: (
     request: Request,
+    scope?: TenantRequestScope,
   ) => Promise<ContextResult<TenantRequestContext>>;
 }
 
@@ -187,14 +189,18 @@ export function createGetAuditEventsHandler(
   deps: AuditEventsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(params, businessIdParamsSchema, 'INVALID_AUDIT_INPUT', 'Invalid audit input');
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;
@@ -229,14 +235,18 @@ export function createGetAuditEventByIdHandler(
   deps: AuditEventsHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-    if (!contextResult.ok) return contextResult.response;
-
+    // Parse route params first for explicit scope
     const paramsResult = validateRouteParams(params, auditEventParamsSchema, 'INVALID_AUDIT_INPUT', 'Invalid audit input');
     if (!paramsResult.ok) return paramsResult.response;
 
     const { businessId, auditEventId } = paramsResult.data;
+
+    const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+    if (!contextResult.ok) return contextResult.response;
 
     const mismatch = assertBusinessRouteMatchesTenant(contextResult.context, businessId);
     if (mismatch) return mismatch;
