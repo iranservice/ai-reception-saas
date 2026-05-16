@@ -217,10 +217,10 @@ export const AUTHJS_SESSION_MISSING_USER_ID_MESSAGE =
   'Ensure the Auth.js jwt and session callbacks are configured to include user.id.';
 
 export const AUTHJS_TENANT_CONTEXT_REQUIRED_MESSAGE =
-  'Tenant context required. Provide x-business-id header.';
+  'Tenant context required. Provide business scope via route param or x-business-id header.';
 
 export const AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE =
-  'x-business-id header is empty or whitespace-only.';
+  'Business scope is empty or whitespace-only.';
 
 export const AUTHJS_TENANT_ACCESS_DENIED_MESSAGE =
   'User does not have an active membership in the specified business.';
@@ -230,6 +230,48 @@ export const AUTHJS_TENANT_RESOLVER_FAILED_MESSAGE =
 
 export const AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE =
   'System context resolution is not available in the Auth.js adapter. Deferred to a future task.';
+
+// ---------------------------------------------------------------------------
+// Business scope helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Trims and normalizes a business ID value.
+ * Returns null if the value is missing, empty, or whitespace-only.
+ */
+function normalizeBusinessId(value: string | null | undefined): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Resolves the business ID from explicit scope and/or request header.
+ *
+ * Rules:
+ * 1. If scope.source is 'route-param', only scope.businessId is used.
+ *    Header is never consulted — returns null if scope.businessId is blank.
+ * 2. If scope.businessId is non-blank (any source), it takes priority.
+ * 3. Otherwise, falls back to x-business-id header.
+ * 4. Returns null if no usable business ID is found.
+ */
+function resolveBusinessId(
+  request: Request,
+  scope?: TenantRequestScope,
+): string | null {
+  // Route-param scope: never fall back to header
+  if (scope?.source === 'route-param') {
+    return normalizeBusinessId(scope.businessId);
+  }
+
+  // Explicit scope with usable businessId
+  const fromScope = normalizeBusinessId(scope?.businessId);
+  if (fromScope !== null) {
+    return fromScope;
+  }
+
+  // Fallback to x-business-id header
+  return normalizeBusinessId(request.headers.get(BUSINESS_SCOPE_HEADER));
+}
 
 // ---------------------------------------------------------------------------
 // Adapter factory
@@ -316,18 +358,10 @@ export function createAuthjsRequestContextAdapter(
 
       const { userId } = authResult.context;
 
-      // Step 2: Resolve businessId — explicit scope takes priority over header
-      let rawBusinessId: string | null = null;
+      // Step 2: Resolve businessId — route-param scope must never fall back
+      const businessId = resolveBusinessId(request, scope);
 
-      if (scope?.businessId != null && scope.businessId.length > 0) {
-        // Explicit scope provided (route param or test)
-        rawBusinessId = scope.businessId;
-      } else {
-        // Fallback to x-business-id header
-        rawBusinessId = request.headers.get(BUSINESS_SCOPE_HEADER);
-      }
-
-      if (rawBusinessId === null) {
+      if (businessId === null) {
         return {
           ok: false,
           response: apiError(
@@ -336,11 +370,6 @@ export function createAuthjsRequestContextAdapter(
             403,
           ),
         };
-      }
-
-      const businessId = rawBusinessId.trim();
-      if (businessId.length === 0) {
-        return invalidAuth(AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE);
       }
 
       // Step 3: Resolve tenant membership

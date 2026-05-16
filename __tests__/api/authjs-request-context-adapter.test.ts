@@ -523,7 +523,7 @@ describe('resolveTenant — missing business scope', () => {
 });
 
 describe('resolveTenant — invalid business scope', () => {
-  it('returns 400 INVALID_AUTH_CONTEXT for empty x-business-id', async () => {
+  it('returns 403 TENANT_CONTEXT_REQUIRED for empty x-business-id header', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const adapter = adapterWithEnv(auth, bothFlagsEnv);
     const result = await adapter.resolveTenant(
@@ -531,14 +531,13 @@ describe('resolveTenant — invalid business scope', () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.response.status).toBe(400);
+      expect(result.response.status).toBe(403);
       const body = await result.response.json();
-      expect(body.error.code).toBe('INVALID_AUTH_CONTEXT');
-      expect(body.error.message).toBe(AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE);
+      expect(body.error.code).toBe('TENANT_CONTEXT_REQUIRED');
     }
   });
 
-  it('returns 400 INVALID_AUTH_CONTEXT for whitespace-only x-business-id', async () => {
+  it('returns 403 TENANT_CONTEXT_REQUIRED for whitespace-only x-business-id header', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const adapter = adapterWithEnv(auth, bothFlagsEnv);
     const result = await adapter.resolveTenant(
@@ -546,7 +545,7 @@ describe('resolveTenant — invalid business scope', () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.response.status).toBe(400);
+      expect(result.response.status).toBe(403);
     }
   });
 });
@@ -646,7 +645,7 @@ describe('resolveTenant — valid tenant context', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveTenant — explicit scope', () => {
-  it('uses scope.businessId instead of header when scope provided', async () => {
+  it('uses scope.businessId instead of header when source is route-param', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const resolver = successResolver();
     const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
@@ -675,7 +674,37 @@ describe('resolveTenant — explicit scope', () => {
     });
   });
 
-  it('falls back to header when scope.businessId is null', async () => {
+  it('route-param source with blank businessId returns 403 — never falls back to header', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'header-biz' }),
+      { businessId: '', source: 'route-param' },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+    }
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('route-param source with null businessId returns 403 — never falls back to header', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'header-biz' }),
+      { businessId: null, source: 'route-param' },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+    }
+    expect(resolver).not.toHaveBeenCalled();
+  });
+
+  it('non-route-param source falls back to header when scope.businessId is null', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const resolver = successResolver();
     const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
@@ -689,7 +718,7 @@ describe('resolveTenant — explicit scope', () => {
     });
   });
 
-  it('falls back to header when scope.businessId is empty string', async () => {
+  it('non-route-param source falls back to header when scope.businessId is empty', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const resolver = successResolver();
     const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
@@ -703,12 +732,21 @@ describe('resolveTenant — explicit scope', () => {
     });
   });
 
-  it('returns 403 when scope.businessId is null and no header', async () => {
+  it('returns 403 when no scope and no header', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+    const result = await adapter.resolveTenant(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+    }
+  });
+
+  it('returns 403 when header is whitespace-only and no scope', async () => {
     const auth = mockAuth({ user: { id: 'user-1' } });
     const adapter = adapterWithEnv(auth, bothFlagsEnv);
     const result = await adapter.resolveTenant(
-      makeRequest(),
-      { businessId: null },
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: '   ' }),
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
