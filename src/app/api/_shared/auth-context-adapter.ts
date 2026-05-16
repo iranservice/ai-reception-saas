@@ -23,6 +23,10 @@ import {
 } from './request-context';
 import type { TenantContext, MembershipRoleValue } from '@/domains/tenancy/types';
 import { MEMBERSHIP_ROLE_VALUES } from '@/domains/tenancy/types';
+import {
+  isAuthjsRequestContextEnabled,
+  createDefaultAuthjsAdapter,
+} from './authjs-context-adapter';
 
 // ---------------------------------------------------------------------------
 // Feature flag
@@ -297,9 +301,16 @@ export function createDevHeaderAuthContextAdapter(
 
 /**
  * Returns the default auth context adapter.
- * Currently uses the dev header adapter.
- * No singleton required. No side effects.
+ *
+ * When ENABLE_AUTHJS_REQUEST_CONTEXT is "true", returns the Auth.js
+ * session-backed adapter. Otherwise returns the dev header adapter.
+ *
+ * TASK-0039: Added Auth.js adapter selection behind feature flag.
  */
 export function getDefaultAuthContextAdapter(): AuthContextAdapter {
+  if (isAuthjsRequestContextEnabled()) {
+    return createDefaultAuthjsAdapter();
+  }
+
   return createDevHeaderAuthContextAdapter();
 }

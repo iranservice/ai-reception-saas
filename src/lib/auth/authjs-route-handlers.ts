@@ -69,6 +69,8 @@ export interface AuthjsRouteHandlerOutput {
   GET: (req: NextRequest) => Promise<Response>;
   /** POST handler for [...nextauth] route */
   POST: (req: NextRequest) => Promise<Response>;
+  /** Auth.js request-aware session reader — null when disabled */
+  auth: ((request: Request) => Promise<Record<string, unknown> | null>) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +136,7 @@ export function createAuthjsRouteHandlers(
       enabled: false,
       GET: async () => createDisabledAuthjsRouteResponse(),
       POST: async () => createDisabledAuthjsRouteResponse(),
+      auth: null,
     };
   }
 
@@ -144,7 +147,7 @@ export function createAuthjsRouteHandlers(
   const adapterDb = createAuthjsAdapterDb(input.prisma);
   const adapter = createAuthjsAdapter(adapterDb);
 
-  // Initialize NextAuth
+  // Initialize NextAuth with JWT+session callbacks to thread user.id
   const nextAuth: NextAuthResult = NextAuth({
     adapter,
     providers: (input.providers ?? []) as never[],
@@ -152,11 +155,41 @@ export function createAuthjsRouteHandlers(
     secret,
     basePath: input.basePath,
     debug: input.debug ?? false,
+    callbacks: {
+      async jwt({ token, user }) {
+        // On sign-in, the user object from DB is present.
+        // Auth.js standard: token.sub holds the user's internal ID.
+        // We ensure it is set from user.id on sign-in.
+        if (user?.id) {
+          token.sub = user.id;
+        }
+        return token;
+      },
+      async session({ session, token }) {
+        // Thread user.id from JWT token.sub into session.user.id
+        // token.sub is the Auth.js standard subject claim.
+        if (token.sub && session.user) {
+          session.user.id = token.sub;
+        }
+        return session;
+      },
+    },
   });
+
+  // Wrap NextAuth's overloaded auth() into a request-aware function.
+  // NextAuth's auth has many overloaded signatures; we narrow it to
+  // a single (request: Request) => Promise<session | null> contract.
+  const requestAwareAuth = async (
+    request: Request,
+  ): Promise<Record<string, unknown> | null> => {
+    const session = await nextAuth.auth(request as never);
+    return session as Record<string, unknown> | null;
+  };
 
   return {
     enabled: true,
     GET: nextAuth.handlers.GET,
     POST: nextAuth.handlers.POST,
+    auth: requestAwareAuth,
   };
 }
