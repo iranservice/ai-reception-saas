@@ -88,8 +88,8 @@ Creates a staging rollout checklist and observability plan for enabling Auth.js 
 
 ## Decision
 
-Accepted Auth.js request-context staging rollout and observability plan; no runtime changes, documentation-only task.
+Accepted Auth.js request-context staging rollout checklist and observability plan; rollout execution, middleware, UI, and instrumentation implementation remain deferred.
 
 ## Recommended Next Task
 
-[Phase 3] TASK-0043: Execute Auth.js request-context staging rollout using the approved plan.
+[Phase 2] TASK-0043: Auth.js request-context staging validation evidence template
