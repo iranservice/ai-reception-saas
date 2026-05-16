@@ -16,6 +16,7 @@ import {
   resolveTenantRequestContext,
   resolveAuthenticatedRequestContext,
   type TenantRequestContext,
+  type TenantRequestScope,
   type AuthenticatedUserRequestContext,
   type ContextResult,
 } from '@/app/api/_shared/request-context';
@@ -49,6 +50,7 @@ export interface AuthzApiHandlerDeps {
   >;
   readonly resolveTenantContext?: (
     request: Request,
+    scope?: TenantRequestScope,
   ) => Promise<ContextResult<TenantRequestContext>>;
   readonly resolveAuthenticatedContext?: (
     request: Request,

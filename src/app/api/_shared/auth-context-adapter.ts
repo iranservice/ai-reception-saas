@@ -17,6 +17,7 @@ import {
   createSystemRequestContext,
   getRequestId,
   type ContextResult,
+  type TenantRequestScope,
   type AuthenticatedUserRequestContext,
   type TenantRequestContext,
   type SystemRequestContext,
@@ -91,6 +92,7 @@ export interface AuthContextAdapter {
   ): Promise<ContextResult<AuthenticatedUserRequestContext>>;
   resolveTenant(
     request: Request,
+    scope?: TenantRequestScope,
   ): Promise<ContextResult<TenantRequestContext>>;
   resolveSystem(
     request: Request,
@@ -250,6 +252,7 @@ export function createDevHeaderAuthContextAdapter(
 
     async resolveTenant(
       request: Request,
+      _scope?: TenantRequestScope,
     ): Promise<ContextResult<TenantRequestContext>> {
       if (!areDevAuthHeadersEnabled(options?.env)) {
         return authContextUnavailable();

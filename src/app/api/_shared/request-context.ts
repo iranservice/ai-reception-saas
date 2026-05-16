@@ -81,6 +81,17 @@ export type ContextResult<T> =
   | { ok: true; context: T }
   | { ok: false; response: Response };
 
+/**
+ * Optional scope hint for tenant context resolution.
+ * Route handlers with businessId in the URL pass it here so the
+ * resolver uses the route param instead of falling back to the
+ * x-business-id header.
+ */
+export interface TenantRequestScope {
+  readonly businessId?: string | null;
+  readonly source?: 'route-param' | 'header' | 'test';
+}
+
 // ---------------------------------------------------------------------------
 // Context constructors
 // ---------------------------------------------------------------------------
@@ -297,16 +308,20 @@ export async function resolveAuthenticatedRequestContext(
  * Resolves a tenant-scoped request context.
  * Delegates to the default auth context adapter.
  *
+ * @param request - The incoming HTTP request
+ * @param scope - Optional explicit business scope (e.g. from route param)
+ *
  * Default behavior: returns AUTH_CONTEXT_UNAVAILABLE (501)
  * unless ENABLE_DEV_AUTH_CONTEXT="true" and valid tenant dev headers are present.
  */
 export async function resolveTenantRequestContext(
   request: Request,
+  scope?: TenantRequestScope,
 ): Promise<ContextResult<TenantRequestContext>> {
   const { getDefaultAuthContextAdapter } = await import(
     './auth-context-adapter'
   );
-  return getDefaultAuthContextAdapter().resolveTenant(request);
+  return getDefaultAuthContextAdapter().resolveTenant(request, scope);
 }
 
 /**

@@ -642,6 +642,82 @@ describe('resolveTenant — valid tenant context', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 9b. resolveTenant — explicit scope (route param priority)
+// ---------------------------------------------------------------------------
+
+describe('resolveTenant — explicit scope', () => {
+  it('uses scope.businessId instead of header when scope provided', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'header-biz' }),
+      { businessId: 'scope-biz', source: 'route-param' },
+    );
+    expect(resolver).toHaveBeenCalledWith({
+      userId: 'user-1',
+      businessId: 'scope-biz',
+    });
+  });
+
+  it('uses scope.businessId when no header is present', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest(),
+      { businessId: 'route-biz', source: 'route-param' },
+    );
+    expect(result.ok).toBe(true);
+    expect(resolver).toHaveBeenCalledWith({
+      userId: 'user-1',
+      businessId: 'route-biz',
+    });
+  });
+
+  it('falls back to header when scope.businessId is null', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'header-biz' }),
+      { businessId: null, source: 'header' },
+    );
+    expect(resolver).toHaveBeenCalledWith({
+      userId: 'user-1',
+      businessId: 'header-biz',
+    });
+  });
+
+  it('falls back to header when scope.businessId is empty string', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'header-biz' }),
+      { businessId: '', source: 'test' },
+    );
+    expect(resolver).toHaveBeenCalledWith({
+      userId: 'user-1',
+      businessId: 'header-biz',
+    });
+  });
+
+  it('returns 403 when scope.businessId is null and no header', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+    const result = await adapter.resolveTenant(
+      makeRequest(),
+      { businessId: null },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 10. resolveSystem — always unavailable
 // ---------------------------------------------------------------------------
 

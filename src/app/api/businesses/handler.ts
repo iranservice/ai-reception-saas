@@ -21,6 +21,7 @@ import {
   resolveTenantRequestContext,
   type AuthenticatedUserRequestContext,
   type TenantRequestContext,
+  type TenantRequestScope,
   type ContextResult,
 } from '@/app/api/_shared/request-context';
 import { apiError } from '@/app/api/_shared/responses';
@@ -83,6 +84,7 @@ export interface BusinessWorkspaceHandlerDeps {
   ) => Promise<ContextResult<AuthenticatedUserRequestContext>>;
   readonly resolveTenantContext?: (
     request: Request,
+    scope?: TenantRequestScope,
   ) => Promise<ContextResult<TenantRequestContext>>;
 }
 
@@ -179,14 +181,7 @@ export function createGetBusinessByIdHandler(
   deps: BusinessWorkspaceHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve =
-      deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-
-    if (!contextResult.ok) {
-      return contextResult.response;
-    }
-
+    // Parse route params first to get businessId for explicit scope
     const paramsResult = validateRouteParams(
       params,
       uuidParamSchema('businessId'),
@@ -200,8 +195,15 @@ export function createGetBusinessByIdHandler(
 
     const { businessId } = paramsResult.data;
 
-    if (businessId !== contextResult.context.businessId) {
-      return apiError('TENANT_ACCESS_DENIED', 'Tenant access denied', 403);
+    const resolve =
+      deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+
+    if (!contextResult.ok) {
+      return contextResult.response;
     }
 
     const authzResult = await deps.authzService.requirePermission({
@@ -252,14 +254,7 @@ export function createPatchBusinessByIdHandler(
   deps: BusinessWorkspaceHandlerDeps,
 ): (request: Request, params: unknown) => Promise<Response> {
   return async (request: Request, params: unknown): Promise<Response> => {
-    const resolve =
-      deps.resolveTenantContext ?? resolveTenantRequestContext;
-    const contextResult = await resolve(request);
-
-    if (!contextResult.ok) {
-      return contextResult.response;
-    }
-
+    // Parse route params first to get businessId for explicit scope
     const paramsResult = validateRouteParams(
       params,
       uuidParamSchema('businessId'),
@@ -273,8 +268,15 @@ export function createPatchBusinessByIdHandler(
 
     const { businessId } = paramsResult.data;
 
-    if (businessId !== contextResult.context.businessId) {
-      return apiError('TENANT_ACCESS_DENIED', 'Tenant access denied', 403);
+    const resolve =
+      deps.resolveTenantContext ?? resolveTenantRequestContext;
+    const contextResult = await resolve(request, {
+      businessId,
+      source: 'route-param',
+    });
+
+    if (!contextResult.ok) {
+      return contextResult.response;
     }
 
     const authzResult = await deps.authzService.requirePermission({

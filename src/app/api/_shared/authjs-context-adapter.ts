@@ -22,6 +22,7 @@ import {
   createTenantRequestContext,
   getRequestId,
   type ContextResult,
+  type TenantRequestScope,
   type AuthenticatedUserRequestContext,
   type TenantRequestContext,
   type SystemRequestContext,
@@ -44,6 +45,7 @@ export interface AuthjsAuthContextAdapter {
   ): Promise<ContextResult<AuthenticatedUserRequestContext>>;
   resolveTenant(
     request: Request,
+    scope?: TenantRequestScope,
   ): Promise<ContextResult<TenantRequestContext>>;
   resolveSystem(
     request: Request,
@@ -304,6 +306,7 @@ export function createAuthjsRequestContextAdapter(
 
     async resolveTenant(
       request: Request,
+      scope?: TenantRequestScope,
     ): Promise<ContextResult<TenantRequestContext>> {
       // Step 1: Resolve authenticated context first
       const authResult = await this.resolveAuthenticated(request);
@@ -313,8 +316,17 @@ export function createAuthjsRequestContextAdapter(
 
       const { userId } = authResult.context;
 
-      // Step 2: Extract businessId from x-business-id header
-      const rawBusinessId = request.headers.get(BUSINESS_SCOPE_HEADER);
+      // Step 2: Resolve businessId — explicit scope takes priority over header
+      let rawBusinessId: string | null = null;
+
+      if (scope?.businessId != null && scope.businessId.length > 0) {
+        // Explicit scope provided (route param or test)
+        rawBusinessId = scope.businessId;
+      } else {
+        // Fallback to x-business-id header
+        rawBusinessId = request.headers.get(BUSINESS_SCOPE_HEADER);
+      }
+
       if (rawBusinessId === null) {
         return {
           ok: false,

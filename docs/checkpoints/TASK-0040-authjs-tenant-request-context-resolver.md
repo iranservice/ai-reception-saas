@@ -1,4 +1,4 @@
-# TASK-0040 — Auth.js Tenant Request-Context Resolver
+# TASK-0040 — Auth.js Tenant Request-Context Resolver With Explicit Business Scope
 
 | Field | Value |
 |---|---|
@@ -11,20 +11,27 @@
 
 ## Summary
 
-Extends the Auth.js request-context adapter (TASK-0039) from authenticated-only to tenant-scoped context. When `ENABLE_AUTHJS_REQUEST_CONTEXT` is enabled, `resolveTenant` extracts a business scope from the `x-business-id` header, authenticates the user via Auth.js session, then resolves tenant membership through the composition root's TenancyService. System context resolution remains explicitly deferred.
+Extends the Auth.js request-context adapter (TASK-0039) from authenticated-only to tenant-scoped context with explicit business scope support. Business-scoped route handlers pass the route-param `businessId` as an explicit scope into the tenant resolver. The `x-business-id` header serves only as a fallback for generic tenant-scoped routes (e.g. authz evaluate/require). System context resolution remains explicitly deferred.
 
 ## Architecture
 
 ```
-resolveTenant(request)
-  ├── resolveAuthenticated(request)  → userId from session
-  ├── x-business-id header           → businessId
+resolveTenant(request, scope?)
+  ├── resolveAuthenticated(request)       → userId from session
+  ├── scope?.businessId (route param)     → preferred businessId
+  │   └── fallback: x-business-id header  → fallback businessId
   └── tenantMembershipResolver(userId, businessId)
         └── (lazy import) composition.ts → TenancyService.resolveTenantContext
-              └── TenancyRepository.resolveTenantContext
 ```
 
-The tenant membership resolver is injected via `AuthjsRequestContextAdapterOptions.tenantMembershipResolver`. The default adapter wires it lazily from the composition root, avoiding module-level imports of Prisma/repository dependencies.
+Business-scoped route handlers (businesses, memberships, audit-events):
+1. Parse route params first to extract `businessId`
+2. Pass `{ businessId, source: 'route-param' }` as scope to `resolveTenant`
+3. Header cannot override route param scope
+
+Generic tenant routes (authz evaluate/require):
+1. No explicit scope
+2. Falls back to `x-business-id` header
 
 ## Error Contract
 
@@ -36,8 +43,8 @@ The tenant membership resolver is injected via `AuthjsRequestContextAdapterOptio
 | `auth(request)` returns null | `UNAUTHENTICATED` | 401 |
 | `session.user` missing | `UNAUTHENTICATED` | 401 |
 | `session.user.id` missing/empty/whitespace | `INVALID_AUTH_CONTEXT` | 400 |
-| No `x-business-id` header | `TENANT_CONTEXT_REQUIRED` | 403 |
-| Empty/whitespace `x-business-id` | `INVALID_AUTH_CONTEXT` | 400 |
+| No scope and no `x-business-id` header | `TENANT_CONTEXT_REQUIRED` | 403 |
+| Empty/whitespace businessId (any source) | `INVALID_AUTH_CONTEXT` | 400 |
 | Membership not found | `ACCESS_DENIED` | 403 |
 | Membership resolver throws | `AUTH_CONTEXT_UNAVAILABLE` | 501 |
 | Valid tenant context | Success | — |
@@ -47,30 +54,32 @@ The tenant membership resolver is injected via `AuthjsRequestContextAdapterOptio
 
 | File | Change |
 |---|---|
-| `src/app/api/_shared/authjs-context-adapter.ts` | Implemented `resolveTenant`; added `TenantMembershipResolver` type; added `x-business-id` extraction; lazy composition root wiring in default adapter |
-| `__tests__/api/authjs-request-context-adapter.test.ts` | Replaced 2 tenant stub tests with 10 comprehensive tenant resolution tests covering flag gates, auth propagation, missing/empty business scope, membership errors, resolver throws, happy path, trimming, and auth call verification |
+| `src/app/api/_shared/request-context.ts` | Added `TenantRequestScope` type; updated `resolveTenantRequestContext(request, scope?)` |
+| `src/app/api/_shared/auth-context-adapter.ts` | Updated `AuthContextAdapter.resolveTenant(request, scope?)`; dev header adapter accepts scope |
+| `src/app/api/_shared/authjs-context-adapter.ts` | `resolveTenant(request, scope?)` uses explicit scope priority over header fallback |
+| `src/app/api/businesses/handler.ts` | GET_BY_ID and PATCH_BY_ID: parse params first, pass scope `{ businessId, source: 'route-param' }` |
+| `src/app/api/businesses/[businessId]/memberships/handler.ts` | All 5 handlers: parse params first, pass explicit scope |
+| `src/app/api/businesses/[businessId]/audit-events/handler.ts` | Both handlers: parse params first, pass explicit scope |
+| `src/app/api/authz/handler.ts` | Deps type updated for scope; call sites unchanged (no route-param businessId) |
+| `__tests__/api/authjs-request-context-adapter.test.ts` | 5 new explicit scope tests (scope override, fallback, null scope) |
+| `__tests__/api/businesses-handler.test.ts` | Mismatch tests replaced with scope-passing verification tests |
 
 ## Files Not Changed
 
-- package.json
-- pnpm-lock.yaml
-- prisma/schema.prisma
-- prisma/migrations/*
+- package.json / pnpm-lock.yaml
+- prisma/schema.prisma / prisma/migrations/*
 - env files
 - middleware
 - UI
-- existing route handlers
-- domain services
-- auth-context-adapter.ts (no wiring change needed — already delegates to authjs adapter)
+- domain services / repository layer
 
 ## Design Decisions
 
-1. **Business scope from header only**: The adapter reads `x-business-id` header. Route handlers enforce route param ↔ context match separately (already implemented in `businesses/handler.ts`).
-2. **Reuse TenancyService**: Used existing `TenancyService.resolveTenantContext()` via lazy composition root import rather than creating a new abstract `TenantMembershipResolver` interface.
-3. **Lazy composition import**: `createDefaultAuthjsAdapter` lazily imports `getApiDependencies()` from `./composition` at call time, not at module load, avoiding Prisma initialization during static generation.
-4. **resolveTenant delegates to resolveAuthenticated**: Ensures dual flag enforcement and session validation are always applied before tenant resolution.
-5. **Trimmed businessId**: `x-business-id` header value is trimmed. Whitespace-only values are rejected with 400.
-6. **Resolver error isolation**: If `tenantMembershipResolver` throws, returns `AUTH_CONTEXT_UNAVAILABLE` 501 (infrastructure failure). If it returns an error result, returns `ACCESS_DENIED` 403 (business logic).
+1. **Route param priority**: `scope?.businessId` is used when provided (non-null, non-empty). `x-business-id` header is only a fallback. Header cannot override explicit scope.
+2. **Parse params first**: Business-scoped handlers parse route params before calling `resolveTenant`, so the scope is available at resolution time.
+3. **Kept assertBusinessRouteMatchesTenant**: The mismatch guard remains as defense-in-depth, even though the scope ensures the resolver uses the correct businessId.
+4. **Generic routes unaffected**: Authz evaluate/require handlers do not have businessId in the URL, so they continue to use header-only resolution with no scope.
+5. **TenantRequestScope type**: Exported from `request-context.ts` with optional `source` field for traceability.
 
 ## Checks Run
 
@@ -80,8 +89,8 @@ The tenant membership resolver is injected via `AuthjsRequestContextAdapterOptio
 | `pnpm prisma:format` | ✅ |
 | `pnpm prisma:generate` | ✅ |
 | `pnpm typecheck` | ✅ |
-| `pnpm lint` | ✅ (0 errors, 6 warnings) |
-| `pnpm test` | ✅ 821 passed, 7 skipped |
+| `pnpm lint` | ✅ (0 errors, 8 warnings) |
+| `pnpm test` | ✅ 826 passed, 7 skipped |
 | `pnpm build` | ✅ |
 
 ## Decision
