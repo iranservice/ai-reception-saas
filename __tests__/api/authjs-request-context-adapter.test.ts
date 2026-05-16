@@ -20,12 +20,19 @@ import {
   AUTHJS_RUNTIME_NOT_ENABLED_MESSAGE,
   AUTHJS_SESSION_READ_FAILED_MESSAGE,
   AUTHJS_SESSION_MISSING_USER_ID_MESSAGE,
-  AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE,
+  AUTHJS_TENANT_CONTEXT_REQUIRED_MESSAGE,
+  AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE,
+  AUTHJS_TENANT_ACCESS_DENIED_MESSAGE,
+  AUTHJS_TENANT_RESOLVER_FAILED_MESSAGE,
   AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE,
+  BUSINESS_SCOPE_HEADER,
   type AuthjsSessionReader,
+  type TenantMembershipResolver,
 } from '@/app/api/_shared/authjs-context-adapter';
 
 import type { AuthjsSessionLike } from '@/lib/auth/authjs-runtime';
+import { ok, err } from '@/lib/result';
+import type { TenantContext } from '@/domains/tenancy/types';
 
 import { AUTHJS_RUNTIME_FEATURE_FLAG } from '@/lib/auth/authjs-feature-gate';
 
@@ -71,6 +78,29 @@ function mockAuth(session: AuthjsSessionLike | null): AuthjsSessionReader {
   return vi.fn(async () => session);
 }
 
+/** Mock tenant context for happy path */
+const MOCK_TENANT: TenantContext = {
+  userId: 'internal-user-uuid-001',
+  businessId: 'biz-uuid-001',
+  membershipId: 'mem-uuid-001',
+  role: 'OWNER',
+};
+
+/** Tenant resolver that always succeeds */
+function successResolver(): TenantMembershipResolver {
+  return vi.fn(async () => ok(MOCK_TENANT));
+}
+
+/** Tenant resolver that returns a domain error */
+function failResolver(): TenantMembershipResolver {
+  return vi.fn(async () => err('MEMBERSHIP_NOT_FOUND', 'No membership'));
+}
+
+/** Tenant resolver that throws */
+function throwingResolver(): TenantMembershipResolver {
+  return vi.fn(async () => { throw new Error('DB connection failed'); });
+}
+
 /** Both flags enabled */
 const bothFlagsEnv = {
   [AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG]: 'true',
@@ -80,8 +110,13 @@ const bothFlagsEnv = {
 function adapterWithEnv(
   auth: AuthjsSessionReader,
   env: Record<string, string | undefined>,
+  tenantMembershipResolver?: TenantMembershipResolver,
 ) {
-  return createAuthjsRequestContextAdapter({ auth, env });
+  return createAuthjsRequestContextAdapter({
+    auth,
+    env,
+    tenantMembershipResolver: tenantMembershipResolver ?? successResolver(),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -423,30 +458,186 @@ describe('resolveAuthenticated — missing user.id', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 9. resolveTenant — always unavailable
+// 9. resolveTenant — tenant context resolution
 // ---------------------------------------------------------------------------
 
-describe('resolveTenant', () => {
-  it('always returns 501 AUTH_CONTEXT_UNAVAILABLE', async () => {
-    const auth = mockAuth({ user: { id: 'user-tenant' } });
-    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+describe('resolveTenant — flag gates', () => {
+  it('returns 501 when ENABLE_AUTHJS_REQUEST_CONTEXT is disabled', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, {
+      [AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG]: 'false',
+      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'true',
+    });
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(501);
+    }
+  });
 
+  it('returns 501 when ENABLE_AUTHJS_RUNTIME is disabled', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, {
+      [AUTHJS_REQUEST_CONTEXT_FEATURE_FLAG]: 'true',
+      [AUTHJS_RUNTIME_FEATURE_FLAG]: 'false',
+    });
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(501);
+    }
+  });
+});
+
+describe('resolveTenant — unauthenticated', () => {
+  it('returns 401 when session is null', async () => {
+    const auth = mockAuth(null);
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(401);
+    }
+  });
+});
+
+describe('resolveTenant — missing business scope', () => {
+  it('returns 403 TENANT_CONTEXT_REQUIRED when no x-business-id', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
     const result = await adapter.resolveTenant(makeRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+      const body = await result.response.json();
+      expect(body.error.code).toBe('TENANT_CONTEXT_REQUIRED');
+      expect(body.error.message).toBe(AUTHJS_TENANT_CONTEXT_REQUIRED_MESSAGE);
+    }
+  });
+});
+
+describe('resolveTenant — invalid business scope', () => {
+  it('returns 400 INVALID_AUTH_CONTEXT for empty x-business-id', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: '' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(400);
+      const body = await result.response.json();
+      expect(body.error.code).toBe('INVALID_AUTH_CONTEXT');
+      expect(body.error.message).toBe(AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE);
+    }
+  });
+
+  it('returns 400 INVALID_AUTH_CONTEXT for whitespace-only x-business-id', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: '   ' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(400);
+    }
+  });
+});
+
+describe('resolveTenant — membership not found', () => {
+  it('returns 403 ACCESS_DENIED when resolver returns error', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = failResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+      const body = await result.response.json();
+      expect(body.error.code).toBe('ACCESS_DENIED');
+      expect(body.error.message).toBe(AUTHJS_TENANT_ACCESS_DENIED_MESSAGE);
+    }
+  });
+});
+
+describe('resolveTenant — resolver throws', () => {
+  it('returns 501 AUTH_CONTEXT_UNAVAILABLE when resolver throws', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = throwingResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' }),
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.response.status).toBe(501);
       const body = await result.response.json();
       expect(body.error.code).toBe('AUTH_CONTEXT_UNAVAILABLE');
-      expect(body.error.message).toBe(AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE);
+      expect(body.error.message).toBe(AUTHJS_TENANT_RESOLVER_FAILED_MESSAGE);
     }
   });
 
-  it('does not call auth when resolveTenant is called', async () => {
-    const auth = mockAuth({ user: { id: 'user-tenant' } });
-    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+  it('does not expose thrown error message in response', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const resolver = throwingResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const body = await result.response.json();
+      expect(body.error.message).not.toContain('DB connection');
+    }
+  });
+});
 
-    await adapter.resolveTenant(makeRequest());
-    expect(auth).not.toHaveBeenCalled();
+describe('resolveTenant — valid tenant context', () => {
+  it('returns TenantRequestContext on success', async () => {
+    const auth = mockAuth({ user: { id: 'internal-user-uuid-001' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    const result = await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-uuid-001' }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.context.actorType).toBe('user');
+      expect(result.context.userId).toBe(MOCK_TENANT.userId);
+      expect(result.context.businessId).toBe(MOCK_TENANT.businessId);
+      expect(result.context.membershipId).toBe(MOCK_TENANT.membershipId);
+      expect(result.context.role).toBe(MOCK_TENANT.role);
+    }
+  });
+
+  it('passes trimmed userId and trimmed businessId to resolver', async () => {
+    const auth = mockAuth({ user: { id: '  user-trimmed  ' } });
+    const resolver = successResolver();
+    const adapter = adapterWithEnv(auth, bothFlagsEnv, resolver);
+    await adapter.resolveTenant(
+      makeRequest({ [BUSINESS_SCOPE_HEADER]: '  biz-trimmed  ' }),
+    );
+    expect(resolver).toHaveBeenCalledWith({
+      userId: 'user-trimmed',
+      businessId: 'biz-trimmed',
+    });
+  });
+
+  it('calls auth with the request', async () => {
+    const auth = mockAuth({ user: { id: 'user-1' } });
+    const adapter = adapterWithEnv(auth, bothFlagsEnv);
+    const req = makeRequest({ [BUSINESS_SCOPE_HEADER]: 'biz-1' });
+    await adapter.resolveTenant(req);
+    expect(auth).toHaveBeenCalledWith(req);
   });
 });
 
@@ -629,7 +820,10 @@ describe('TASK-0039 constants', () => {
     expect(AUTHJS_RUNTIME_NOT_ENABLED_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_SESSION_READ_FAILED_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_SESSION_MISSING_USER_ID_MESSAGE.length).toBeGreaterThan(0);
-    expect(AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE.length).toBeGreaterThan(0);
+    expect(AUTHJS_TENANT_CONTEXT_REQUIRED_MESSAGE.length).toBeGreaterThan(0);
+    expect(AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE.length).toBeGreaterThan(0);
+    expect(AUTHJS_TENANT_ACCESS_DENIED_MESSAGE.length).toBeGreaterThan(0);
+    expect(AUTHJS_TENANT_RESOLVER_FAILED_MESSAGE.length).toBeGreaterThan(0);
     expect(AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE.length).toBeGreaterThan(0);
   });
 });

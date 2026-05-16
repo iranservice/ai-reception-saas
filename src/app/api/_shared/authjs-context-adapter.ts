@@ -1,21 +1,25 @@
 // ===========================================================================
 // API Shared — Auth.js Request-Context Adapter
 //
-// Auth.js-backed authenticated request context resolver adapter.
+// Auth.js-backed request context resolver adapter.
 // Gated behind ENABLE_AUTHJS_REQUEST_CONTEXT feature flag.
 //
-// This adapter resolves ONLY authenticated user context from Auth.js
-// JWT sessions. Tenant and system context resolution remain explicitly
-// unavailable and deferred to future tasks.
+// This adapter resolves:
+// - Authenticated user context from Auth.js JWT sessions (TASK-0039)
+// - Tenant context from session + x-business-id header + membership
+//   lookup (TASK-0040)
+// - System context remains explicitly unavailable
 //
 // This module does NOT import the Auth.js package directly. Session
 // reading is injected via AuthjsRequestContextAdapterOptions.
 //
 // TASK-0039: Auth.js authenticated request-context resolver.
+// TASK-0040: Auth.js tenant request-context resolver.
 // ===========================================================================
 
 import {
   createAuthenticatedUserRequestContext,
+  createTenantRequestContext,
   getRequestId,
   type ContextResult,
   type AuthenticatedUserRequestContext,
@@ -23,6 +27,8 @@ import {
   type SystemRequestContext,
 } from './request-context';
 import { apiError } from './responses';
+import type { TenantContext } from '@/domains/tenancy/types';
+import type { ActionResult } from '@/lib/result';
 
 // ---------------------------------------------------------------------------
 // Local adapter interface (matches auth-context-adapter.AuthContextAdapter)
@@ -116,6 +122,27 @@ export type AuthjsSessionReader = (
 ) => Promise<AuthjsSessionLike | null>;
 
 // ---------------------------------------------------------------------------
+// Tenant membership resolver type
+// ---------------------------------------------------------------------------
+
+/**
+ * Input for tenant membership resolution.
+ */
+export interface ResolveTenantInput {
+  readonly userId: string;
+  readonly businessId: string;
+}
+
+/**
+ * Function that resolves a tenant context from userId + businessId.
+ * Returns an ActionResult wrapping TenantContext on success,
+ * or an error if the user has no active membership in the business.
+ */
+export type TenantMembershipResolver = (
+  input: ResolveTenantInput,
+) => Promise<ActionResult<TenantContext>>;
+
+// ---------------------------------------------------------------------------
 // Adapter options
 // ---------------------------------------------------------------------------
 
@@ -125,6 +152,8 @@ export type AuthjsSessionReader = (
 export interface AuthjsRequestContextAdapterOptions {
   /** Auth.js session reader — receives the Request, returns session or null */
   auth: AuthjsSessionReader;
+  /** Tenant membership resolver — resolves userId+businessId to TenantContext */
+  tenantMembershipResolver: TenantMembershipResolver;
   /** Environment override for testing (defaults to process.env) */
   env?: Record<string, string | undefined>;
 }
@@ -162,6 +191,13 @@ function invalidAuth(
 }
 
 // ---------------------------------------------------------------------------
+// Business scope header
+// ---------------------------------------------------------------------------
+
+/** Header name for explicit business scope */
+export const BUSINESS_SCOPE_HEADER = 'x-business-id';
+
+// ---------------------------------------------------------------------------
 // Error messages
 // ---------------------------------------------------------------------------
 
@@ -178,8 +214,17 @@ export const AUTHJS_SESSION_MISSING_USER_ID_MESSAGE =
   'Auth.js session exists but is missing internal user ID (session.user.id). ' +
   'Ensure the Auth.js jwt and session callbacks are configured to include user.id.';
 
-export const AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE =
-  'Tenant context resolution is not available in the Auth.js adapter. Deferred to a future task.';
+export const AUTHJS_TENANT_CONTEXT_REQUIRED_MESSAGE =
+  'Tenant context required. Provide x-business-id header.';
+
+export const AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE =
+  'x-business-id header is empty or whitespace-only.';
+
+export const AUTHJS_TENANT_ACCESS_DENIED_MESSAGE =
+  'User does not have an active membership in the specified business.';
+
+export const AUTHJS_TENANT_RESOLVER_FAILED_MESSAGE =
+  'Tenant membership resolution failed.';
 
 export const AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE =
   'System context resolution is not available in the Auth.js adapter. Deferred to a future task.';
@@ -192,15 +237,16 @@ export const AUTHJS_SYSTEM_CONTEXT_UNAVAILABLE_MESSAGE =
  * Creates an Auth.js-backed request-context adapter.
  *
  * - `resolveAuthenticated`: uses Auth.js session to extract user ID
- * - `resolveTenant`: always returns AUTH_CONTEXT_UNAVAILABLE (deferred)
+ * - `resolveTenant`: uses Auth.js session + x-business-id header +
+ *   membership lookup
  * - `resolveSystem`: always returns AUTH_CONTEXT_UNAVAILABLE (deferred)
  *
- * @param options - Adapter configuration with injected auth function
+ * @param options - Adapter configuration with injected auth and resolver
  */
 export function createAuthjsRequestContextAdapter(
   options: AuthjsRequestContextAdapterOptions,
 ): AuthjsAuthContextAdapter {
-  const { auth, env } = options;
+  const { auth, tenantMembershipResolver, env } = options;
 
   return {
     async resolveAuthenticated(
@@ -257,9 +303,64 @@ export function createAuthjsRequestContextAdapter(
     },
 
     async resolveTenant(
-      _request: Request,
+      request: Request,
     ): Promise<ContextResult<TenantRequestContext>> {
-      return unavailable(AUTHJS_TENANT_CONTEXT_UNAVAILABLE_MESSAGE);
+      // Step 1: Resolve authenticated context first
+      const authResult = await this.resolveAuthenticated(request);
+      if (!authResult.ok) {
+        return authResult;
+      }
+
+      const { userId } = authResult.context;
+
+      // Step 2: Extract businessId from x-business-id header
+      const rawBusinessId = request.headers.get(BUSINESS_SCOPE_HEADER);
+      if (rawBusinessId === null) {
+        return {
+          ok: false,
+          response: apiError(
+            'TENANT_CONTEXT_REQUIRED',
+            AUTHJS_TENANT_CONTEXT_REQUIRED_MESSAGE,
+            403,
+          ),
+        };
+      }
+
+      const businessId = rawBusinessId.trim();
+      if (businessId.length === 0) {
+        return invalidAuth(AUTHJS_TENANT_INVALID_BUSINESS_ID_MESSAGE);
+      }
+
+      // Step 3: Resolve tenant membership
+      let resolveResult: ActionResult<TenantContext>;
+      try {
+        resolveResult = await tenantMembershipResolver({
+          userId,
+          businessId,
+        });
+      } catch {
+        return unavailable(AUTHJS_TENANT_RESOLVER_FAILED_MESSAGE);
+      }
+
+      if (!resolveResult.ok) {
+        return {
+          ok: false,
+          response: apiError(
+            'ACCESS_DENIED',
+            AUTHJS_TENANT_ACCESS_DENIED_MESSAGE,
+            403,
+          ),
+        };
+      }
+
+      // Step 4: Return tenant context
+      return {
+        ok: true,
+        context: createTenantRequestContext({
+          requestId: getRequestId(request),
+          tenant: resolveResult.data,
+        }),
+      };
     },
 
     async resolveSystem(
@@ -276,11 +377,11 @@ export function createAuthjsRequestContextAdapter(
 
 /**
  * Creates the default Auth.js request-context adapter wired to the
- * shared lazy runtime's readAuthjsSession function.
+ * shared lazy runtime's readAuthjsSession function and the
+ * TenancyService's resolveTenantContext for membership lookup.
  *
- * Uses a lazy wrapper around readAuthjsSession to avoid importing
- * authjs-runtime (and its Auth.js package transitive dependency) at
- * module load time. The import happens only when auth is called.
+ * Uses lazy wrappers to avoid importing heavy modules at module
+ * load time. The imports happen only when the functions are called.
  *
  * Called by `getDefaultAuthContextAdapter()` when the Auth.js
  * request-context feature flag is enabled.
@@ -290,5 +391,15 @@ export function createDefaultAuthjsAdapter(): AuthjsAuthContextAdapter {
     const { readAuthjsSession } = await import('@/lib/auth/authjs-runtime');
     return readAuthjsSession(request);
   };
-  return createAuthjsRequestContextAdapter({ auth: lazySessionReader });
+
+  const lazyTenantResolver: TenantMembershipResolver = async (input) => {
+    const { getApiDependencies } = await import('./composition');
+    const tenancyService = getApiDependencies().services.tenancy;
+    return tenancyService.resolveTenantContext(input);
+  };
+
+  return createAuthjsRequestContextAdapter({
+    auth: lazySessionReader,
+    tenantMembershipResolver: lazyTenantResolver,
+  });
 }
