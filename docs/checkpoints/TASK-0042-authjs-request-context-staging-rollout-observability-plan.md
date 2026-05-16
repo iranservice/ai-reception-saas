@@ -11,7 +11,7 @@
 
 ## Summary
 
-Creates a staging rollout checklist and observability plan for enabling Auth.js request-context resolution for protected API handlers. Defines feature flag dependencies, environment variable requirements, a 4-stage rollout procedure (baseline → runtime → Google OAuth → request-context), pre-rollout checklist, per-stage validation steps, error contract reference, observability guidance, and rollback procedures. No source code, tests, or runtime behavior changes.
+Creates a staging rollout checklist and observability plan for enabling Auth.js request-context resolution for protected API handlers. Defines feature flag dependencies, environment variable requirements, a 5-stage rollout procedure (baseline → runtime → Google OAuth → request-context → staging soak), pre-rollout checklist, per-stage validation steps, error contract reference, failure mode matrix, expanded observability plan (structured logs, metrics, dashboards, alerts), manual validation checklist, data safety assessment, exit criteria, open questions, and rollback procedures. No source code, tests, or runtime behavior changes.
 
 ## Documents Created
 
@@ -30,6 +30,7 @@ Creates a staging rollout checklist and observability plan for enabling Auth.js 
 | Stage 1 | `ENABLE_AUTHJS_RUNTIME=true` | Auth.js route runtime — verify session endpoint |
 | Stage 2 | `ENABLE_AUTHJS_GOOGLE_PROVIDER=true` | Google OAuth — verify end-to-end sign-in |
 | Stage 3 | `ENABLE_AUTHJS_REQUEST_CONTEXT=true` | Request-context adapter — verify protected handlers |
+| Stage 4 | All enabled | Staging soak — 24–72 hours monitoring |
 
 ### Pre-Rollout Checklist Covers
 
@@ -45,8 +46,15 @@ Creates a staging rollout checklist and observability plan for enabling Auth.js 
 - Auth.js callback error detection
 - Database connection failure detection
 - JWT decode error detection
-- Manual validation procedures per stage
-- Future observability task recommendations
+- Structured log schema (recommended, not yet implemented)
+- Metrics definitions (counters and histograms)
+- Dashboard panel definitions
+- Alert rules with severity and actions
+- Manual validation checklist
+- Failure mode matrix (8 failure modes with detection and mitigation)
+- Data safety assessment
+- Exit criteria (must-have, should-have, nice-to-have)
+- Open questions (7 items)
 
 ### Rollback Procedure Covers
 
@@ -80,7 +88,7 @@ Creates a staging rollout checklist and observability plan for enabling Auth.js 
 
 ## Decision
 
-Accepted Auth.js request-context staging rollout checklist and observability plan; no runtime changes, documentation-only task.
+Accepted Auth.js request-context staging rollout and observability plan; no runtime changes, documentation-only task.
 
 ## Recommended Next Task
 
