@@ -409,6 +409,170 @@ Record resolutions for open questions from TASK-0042 rollout plan.
 
 ---
 
+## Error Contract Evidence
+
+Verify each error code from the Auth.js request-context adapter contract.
+
+| Scenario | Expected Code | Expected Status | Actual Code | Actual Status | Evidence | Pass/Fail |
+|---|---|---:|---|---:|---|---|
+| Auth.js infrastructure failure | `AUTH_CONTEXT_UNAVAILABLE` | 501 | TBD | TBD | TBD | TBD |
+| No session (not signed in) | `UNAUTHENTICATED` | 401 | TBD | TBD | TBD | TBD |
+| Missing/empty `session.user.id` | `INVALID_AUTH_CONTEXT` | 400 | TBD | TBD | TBD | TBD |
+| Missing/blank business scope | `TENANT_CONTEXT_REQUIRED` | 403 | TBD | TBD | TBD | TBD |
+| Missing/inactive membership | `ACCESS_DENIED` | 403 | TBD | TBD | TBD | TBD |
+
+### Evidence
+
+```
+# Paste curl output or HTTP response (redacted) for each error scenario
+```
+
+---
+
+## Protected Handler Evidence
+
+Verify each protected handler family works with Auth.js request-context.
+
+| Handler Family | Method | Endpoint | Context Type | Expected | Actual | Pass/Fail |
+|---|---|---|---|---|---|---|
+| Business workspace | GET | `/api/businesses/:businessId` | Tenant | 200 | TBD | TBD |
+| Business workspace | PATCH | `/api/businesses/:businessId` | Tenant | 200 | TBD | TBD |
+| Business membership | GET | `/api/businesses/:businessId/memberships` | Tenant | 200 | TBD | TBD |
+| Business membership | POST | `/api/businesses/:businessId/memberships` | Tenant | 201 | TBD | TBD |
+| Business membership | PATCH | `/api/businesses/:businessId/memberships/:id` | Tenant | 200 | TBD | TBD |
+| Tenant audit events | GET | `/api/businesses/:businessId/audit-events` | Tenant | 200 | TBD | TBD |
+| Tenant audit event | GET | `/api/businesses/:businessId/audit-events/:id` | Tenant | 200 | TBD | TBD |
+| Authz evaluate | POST | `/api/authz/evaluate` | Tenant (header) | 200 | TBD | TBD |
+| Authz require | POST | `/api/authz/require` | Tenant (header) | 200 | TBD | TBD |
+
+### Evidence
+
+```
+# Paste curl output or HTTP response (redacted) for each handler
+```
+
+---
+
+## Route-Param Tenant Scope Evidence
+
+Verify route-param businessId takes priority and header fallback rules.
+
+| Scenario | Route Param | Header | Expected Behavior | Actual | Pass/Fail |
+|---|---|---|---|---|---|
+| Route param only | `<valid-id>` | none | Tenant resolved from route param | TBD | TBD |
+| Route param + matching header | `<valid-id>` | `<valid-id>` | Tenant resolved from route param | TBD | TBD |
+| Route param + mismatched header | `<valid-id>` | `<other-id>` | Route param wins, header ignored | TBD | TBD |
+| Route param blank | ` ` | `<valid-id>` | 403 `TENANT_CONTEXT_REQUIRED` (no fallback) | TBD | TBD |
+| Header only (generic route) | none | `<valid-id>` | Tenant resolved from header | TBD | TBD |
+| Header only (whitespace) | none | ` ` | 403 `TENANT_CONTEXT_REQUIRED` | TBD | TBD |
+| Neither param nor header | none | none | 403 `TENANT_CONTEXT_REQUIRED` | TBD | TBD |
+
+### Evidence
+
+```
+# Paste curl output or HTTP response (redacted) for each scenario
+```
+
+---
+
+## Observability Evidence
+
+Capture observable signals during staging validation.
+
+### Application Logs
+
+| Stage | Log Source | Observation | Anomalies |
+|---|---|---|---|
+| Stage 0 | Server console | TBD | TBD |
+| Stage 1 | Server console | TBD | TBD |
+| Stage 2 | Server console | TBD | TBD |
+| Stage 3 | Server console | TBD | TBD |
+| Stage 4 | Server console | TBD | TBD |
+
+### HTTP Error Rate Observations
+
+| Stage | 501 Rate | 401 Rate | 400 Rate | 403 Rate | Notes |
+|---|---|---|---|---|---|
+| Stage 0 (baseline) | TBD | TBD | TBD | TBD | |
+| Stage 3 (request-context) | TBD | TBD | TBD | TBD | |
+| Stage 4 (soak) | TBD | TBD | TBD | TBD | |
+
+### Database State Verification
+
+| Check | Timestamp | Result | Notes |
+|---|---|---|---|
+| User record created after OAuth | TBD | TBD | |
+| Account record created (Google) | TBD | TBD | |
+| No orphaned Account records | TBD | TBD | |
+| BusinessMembership unchanged | TBD | TBD | |
+
+### Evidence
+
+```
+# Paste log excerpts or error rate summaries (redacted)
+```
+
+---
+
+## Rollback Readiness Evidence
+
+Confirm rollback readiness before and during Stage 3/4.
+
+| Check | Timestamp | Result | Notes |
+|---|---|---|---|
+| Rollback owner available | TBD | ☐ | Name: |
+| Rollback procedure reviewed | TBD | ☐ | |
+| Flag disable path confirmed | TBD | ☐ | Platform: |
+| Expected rollback time < 5 min | TBD | ☐ | |
+| Kill-switch tested (Stage 3) | TBD | ☐ | |
+| Incident channel active | TBD | ☐ | Channel: |
+| Fallback behavior verified | TBD | ☐ | Dev-header or 501 |
+
+### Evidence
+
+```
+# Paste rollback test results (redacted)
+```
+
+---
+
+## Final Validation Summary
+
+| Item | Status | Notes |
+|---|---|---|
+| All rollout stages completed | ☐ | |
+| All exit criteria met | ☐ | |
+| All error contract scenarios verified | ☐ | |
+| All protected handler families verified | ☐ | |
+| Route-param scope rules verified | ☐ | |
+| Observability signals reviewed | ☐ | |
+| Rollback readiness confirmed | ☐ | |
+| No unresolved failures | ☐ | |
+| No unresolved rollback events | ☐ | |
+| All open questions resolved | ☐ | |
+| Evidence pack complete | ☐ | |
+
+**Overall validation result:** TBD (Pass / Fail / Pass with conditions)
+
+**Recommendation:** TBD (Proceed to production planning / Repeat validation / Block)
+
+---
+
+## Issues Log
+
+Record any issues, concerns, or observations that do not fit in other sections.
+
+| # | Timestamp | Category | Description | Severity | Resolution | Status |
+|---|---|---|---|---|---|---|
+| | | | | | | |
+| | | | | | | |
+
+Categories: `config`, `auth`, `tenant`, `data`, `infra`, `security`, `docs`, `other`
+
+If no issues, write: **No issues logged during validation.**
+
+---
+
 ## Sign-Off
 
 | Role | Name | Date | Signature |
@@ -438,3 +602,4 @@ Record resolutions for open questions from TASK-0042 rollout plan.
 | Version | Date | Description |
 |---|---|---|
 | 1.0 | 2026-05-16 | Initial template — TASK-0043 |
+| 1.1 | 2026-05-16 | Added error contract, protected handler, route-param scope, observability, rollback readiness, final validation summary, issues log |

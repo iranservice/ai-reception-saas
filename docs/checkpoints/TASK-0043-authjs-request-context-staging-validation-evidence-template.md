@@ -11,7 +11,7 @@
 
 ## Summary
 
-Creates a structured staging validation evidence template that operators duplicate and fill during Auth.js request-context rollout execution. Covers validation metadata, redaction policy, pre-rollout readiness evidence, per-stage evidence capture (Stages 0–4), exit criteria summary, failure mode log, rollback event log, open questions resolution, and sign-off. No source code, tests, or runtime behavior changes.
+Creates a structured staging validation evidence template that operators duplicate and fill during Auth.js request-context rollout execution. Covers validation metadata, redaction policy, pre-rollout readiness evidence, per-stage evidence capture (Stages 0–4), error contract evidence, protected handler evidence, route-param tenant scope evidence, observability evidence, rollback readiness evidence, exit criteria summary, final validation summary, failure mode log, rollback event log, issues log, open questions resolution, and sign-off. No source code, tests, or runtime behavior changes.
 
 ## Documents Created
 
@@ -38,6 +38,13 @@ Creates a structured staging validation evidence template that operators duplica
 | Failure Modes Encountered | Incident log table |
 | Rollback Events | Rollback log table |
 | Open Questions Resolved | Resolution of TASK-0042 open questions |
+| Error Contract Evidence | Every adapter error code verified |
+| Protected Handler Evidence | Every handler family verified |
+| Route-Param Tenant Scope Evidence | Route-param vs header priority rules |
+| Observability Evidence | Logs, error rates, database state |
+| Rollback Readiness Evidence | Rollback owner, procedure, timing |
+| Final Validation Summary | Overall pass/fail with recommendation |
+| Issues Log | Miscellaneous concerns and observations |
 | Sign-Off | Operator, reviewer, rollback owner, CTO |
 
 ### Alignment With TASK-0042
@@ -46,6 +53,12 @@ Creates a structured staging validation evidence template that operators duplica
 - All manual validation checklist items have evidence rows
 - All exit criteria have evidence columns
 - All 7 open questions have resolution rows
+- All 5 error contract scenarios have evidence rows
+- All 9 protected handler families have evidence rows
+- All 7 route-param scope scenarios have evidence rows
+- Observability evidence covers logs, error rates, database state
+- Rollback readiness evidence covers 7 checks
+- Final validation summary covers 11 items with pass/fail
 - Failure mode matrix referenced for incident logging
 - Redaction policy covers all secret types from TASK-0042
 
