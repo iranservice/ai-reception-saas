@@ -89,8 +89,8 @@ Creates a structured staging validation evidence template that operators duplica
 
 ## Decision
 
-Accepted Auth.js request-context staging validation evidence template; rollout execution, observability implementation, and production planning remain deferred.
+Accepted Auth.js request-context staging validation evidence template; validation execution, rollout changes, middleware, UI, and instrumentation remain deferred.
 
 ## Recommended Next Task
 
-[Phase 3] TASK-0044: Execute Auth.js request-context staging rollout using approved plan and evidence template.
+[Phase 2] TASK-0044: Auth.js request-context staging dry-run evidence review checklist
