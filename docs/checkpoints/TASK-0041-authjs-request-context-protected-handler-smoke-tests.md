@@ -79,8 +79,8 @@ The real adapter's `resolveTenant(request, scope?)` and `resolveAuthenticated(re
 
 ## Decision
 
-Accepted Auth.js request-context protected handler smoke tests using real adapter; no runtime changes, test-only task.
+Accepted Auth.js request-context smoke coverage for protected API handlers; runtime behavior, middleware, UI, and production rollout remain unchanged.
 
 ## Recommended Next Task
 
-[Phase 3] TASK-0042: Implement Auth.js system request-context resolver with API key or service token validation.
+[Phase 2] TASK-0042: Auth.js request-context staging rollout checklist and observability plan
