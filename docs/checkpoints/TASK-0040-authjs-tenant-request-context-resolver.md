@@ -100,8 +100,8 @@ Generic tenant routes (authz evaluate/require):
 
 ## Decision
 
-Accepted Auth.js tenant request-context resolver with explicit business scope and route-param isolation behind feature flag; system context resolver, middleware integration, and production rollout remain deferred.
+Accepted Auth.js tenant request-context resolver with explicit business scope; system context, middleware, tenant picker, and production rollout remain deferred.
 
 ## Recommended Next Task
 
-TASK-0041: Implement Auth.js system request-context resolver with API key or service token validation.
+[Phase 2] TASK-0041: Add Auth.js request-context integration smoke tests for protected API handlers
