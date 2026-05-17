@@ -189,6 +189,315 @@ If evidence containing secrets or unredacted sensitive data is discovered:
 
 ---
 
+## Directory Structure Recommendation
+
+Recommended structure for evidence storage:
+
+```text
+authjs-request-context-staging-dry-run/
+  YYYY-MM-DD/
+    00-readiness-signoff/
+    01-evidence-template/
+    02-http-responses/
+    03-logs-redacted/
+    04-metrics-redacted/
+    05-review-checklist/
+    06-final-decision/
+```
+
+### Rules
+
+1. Create a new date folder for each dry-run attempt.
+2. Store each evidence type in the corresponding subfolder.
+3. Do not mix evidence from different dry-run attempts in the same date folder.
+4. Use the naming convention from the Evidence Naming Convention section.
+5. The `06-final-decision/` folder contains the reviewer outcome and CTO sign-off.
+
+---
+
+## Screenshot Policy
+
+### Allowed Screenshot Content
+
+- HTTP response status codes and redacted bodies
+- Application UI states (login page, error pages, success states)
+- Dashboard/metrics panels (redacted)
+- Database query result counts (not full rows)
+
+### Prohibited Screenshot Content
+
+- Browser cookie panels or DevTools showing cookie values
+- Request headers containing session tokens or authorization headers
+- Response bodies containing full JWT payloads or session objects
+- Environment variable panels showing secret values
+- OAuth consent screens showing full email addresses (must mask)
+
+### Screenshot Handling
+
+1. Review every screenshot before storing.
+2. Mask or crop any prohibited content.
+3. Use annotation tools to redact — do not rely on cropping alone if secret data might remain visible.
+4. Name screenshots with the evidence naming convention.
+5. Store in `04-metrics-redacted/` or the relevant stage subfolder.
+
+---
+
+## Log Excerpt Policy
+
+### Allowed Log Content
+
+- Timestamp, log level, and message text
+- Request method and path (e.g., `GET /api/auth/session`)
+- HTTP status codes
+- Error codes and error messages (e.g., `AUTHJS_RUNTIME_DISABLED`)
+- Request duration/latency values
+- Feature flag evaluation results
+
+### Prohibited Log Content
+
+- Cookie header values
+- Authorization header values
+- JWT token strings
+- OAuth token strings (access, refresh, id)
+- Full session object serializations
+- Secret values (AUTH_SECRET, AUTH_GOOGLE_SECRET)
+- Full request/response bodies containing tokens
+
+### Log Handling
+
+1. Extract only the relevant log lines — do not dump entire log files.
+2. Replace prohibited content with `[REDACTED]` inline.
+3. Store redacted excerpts in `03-logs-redacted/`.
+4. Maximum recommended log excerpt: 100 lines per stage.
+
+---
+
+## Database Evidence Policy
+
+### Allowed Database Evidence
+
+- Row counts (e.g., "Account table: 1 row matching test user")
+- Column existence confirmations (e.g., "`emailVerified` column exists")
+- Table existence confirmations
+- Membership role and status values
+- Query result counts from verification queries
+
+### Prohibited Database Evidence
+
+- Full table dumps
+- Full row exports with all columns
+- Password hashes or encrypted fields
+- Email addresses (must be masked)
+- Any column containing token or secret data
+
+### Database Handling
+
+1. Use `SELECT count(*)` or targeted single-row queries.
+2. Mask email addresses in query results.
+3. Never run `SELECT *` — specify only needed columns.
+4. Store database evidence as text excerpts in the evidence template, not as separate CSV/SQL files.
+
+---
+
+## HTTP Evidence Policy
+
+### Allowed HTTP Evidence
+
+- Request method and URL path
+- HTTP status code
+- Response body error codes (e.g., `AUTHJS_RUNTIME_DISABLED`, `AUTH_CONTEXT_UNAVAILABLE`)
+- Response `Content-Type` header
+- Redirect location paths (without query parameters containing tokens)
+
+### Prohibited HTTP Evidence
+
+- `Cookie` request header values
+- `Authorization` request header values
+- `Set-Cookie` response header values
+- Response bodies containing full JWT or session payloads
+- OAuth callback URLs containing `code=` or `state=` parameter values
+- Full `curl` commands that include `-H "Cookie: ..."` or `-H "Authorization: ..."`
+
+### HTTP Handling
+
+1. Use `curl -s -o /dev/null -w "%{http_code}"` for status-only checks.
+2. Pipe JSON responses through `jq` to extract only the needed fields.
+3. Replace token values with `[REDACTED]` in any stored curl output.
+4. Store HTTP evidence in `02-http-responses/` or inline in the evidence template.
+
+---
+
+## Evidence Integrity
+
+### Immutability
+
+1. Once evidence is submitted for review, it must not be modified.
+2. If corrections are needed, create a new version with a changelog note.
+3. The reviewer must review the final, unmodified version.
+
+### Completeness
+
+1. Evidence must cover all stages executed (Stage 0–4).
+2. Missing stage evidence must be documented with a reason.
+3. Partial evidence packs are flagged during review (TASK-0044).
+
+### Traceability
+
+1. Every evidence file must reference the dry-run date and deployment commit SHA.
+2. Every evidence file must reference the operator name.
+3. The evidence template links to the specific checklist and sign-off used.
+
+### Verification
+
+- [ ] Evidence pack matches the directory structure recommendation
+- [ ] All required stages have corresponding evidence
+- [ ] No files have been modified after submission timestamp
+- [ ] Deployment commit SHA is consistent across all evidence files
+
+---
+
+## Storage Workflow
+
+```
+┌─────────────────────────────────┐
+│ 1. Operator creates date folder │
+│    per directory structure       │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 2. Operator captures evidence   │
+│    during dry-run execution     │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 3. Operator redacts all files   │
+│    per redaction requirements   │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 4. Operator self-verifies       │
+│    redaction (grep check)       │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 5. Operator transfers to        │
+│    approved storage location    │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 6. Operator deletes local       │
+│    copies within 7 days         │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 7. Reviewer accesses evidence   │
+│    from approved storage        │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 8. Reviewer verifies redaction  │
+│    and completeness             │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 9. CTO records final decision   │
+│    in 06-final-decision/        │
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│ 10. Evidence marked immutable   │
+│     retention clock starts      │
+└─────────────────────────────────┘
+```
+
+---
+
+## Evidence Sharing Rules
+
+| Sharing Scenario | Allowed? | Conditions |
+|---|---|---|
+| Operator → Reviewer (approved storage) | Yes | Redacted, via approved location only |
+| Reviewer → CTO (approved storage) | Yes | Redacted, via approved location only |
+| Anyone → Chat/Slack (summary only) | Yes | No secrets, no tokens, no cookies, no full evidence |
+| Anyone → Chat/Slack (screenshots) | Conditional | Only if fully redacted and approved |
+| Anyone → Email | Conditional | Only redacted summaries, never full evidence packs |
+| Anyone → External parties | No | Never without explicit CTO approval |
+| Anyone → Public channels | No | Never |
+
+### Sharing Rules
+
+1. **Default deny**: Evidence is not shared unless explicitly allowed above.
+2. **Redaction first**: All shared content must be redacted before sharing.
+3. **Approved channel only**: Use approved storage location for evidence transfer.
+4. **No attachments in chat**: Do not attach evidence files in chat tools.
+5. **Link, don't copy**: Share links to approved storage, not file copies.
+
+---
+
+## Incident Exception Handling
+
+If an incident occurs during the dry-run that requires deviating from this policy:
+
+### Allowed Exceptions
+
+1. **Emergency rollback evidence**: May be captured without full redaction if immediate action is needed. Must be redacted within 24 hours.
+2. **Incident channel sharing**: Unredacted status codes and error messages may be shared in the incident channel for coordination. No secrets.
+3. **CTO override**: CTO may authorize temporary storage in a non-approved location during an active incident. Must be moved to approved storage within 48 hours.
+
+### Exception Record
+
+| Field | Value |
+|---|---|
+| Exception Date | TBD |
+| Exception Type | Emergency rollback / Incident sharing / CTO override |
+| Reason | TBD |
+| Authorized By | TBD |
+| Remediation Deadline | TBD |
+| Remediation Completed | TBD |
+
+### Rules
+
+1. Every exception must be recorded.
+2. Unredacted evidence stored under exception must be redacted or disposed within the remediation deadline.
+3. CTO reviews all exceptions after the incident is resolved.
+
+---
+
+## Compliance Checklist
+
+Before the evidence pack is considered complete, verify:
+
+- [ ] All evidence stored in approved location
+- [ ] Directory structure follows recommendation
+- [ ] Naming convention followed for all files
+- [ ] All secrets redacted (AUTH_SECRET, AUTH_GOOGLE_SECRET)
+- [ ] All cookies/JWTs/OAuth tokens redacted
+- [ ] All email addresses masked
+- [ ] No full session objects stored
+- [ ] No full table dumps stored
+- [ ] Screenshots reviewed and redacted
+- [ ] Log excerpts reviewed and redacted
+- [ ] HTTP evidence reviewed and redacted
+- [ ] Database evidence limited to counts/confirmations
+- [ ] Evidence integrity verified (no post-submission modifications)
+- [ ] Local copies deleted or scheduled for deletion
+- [ ] Access control verified (only authorized roles have access)
+- [ ] Retention policy acknowledged
+- [ ] No evidence shared via unauthorized channels
+
+---
+
+## Open Questions
+
+| Question | Owner | Status |
+|---|---|---|
+| Exact approved storage location (shared drive, wiki, private repo) | CTO / Ops | TBD — must be resolved before first dry-run |
+| Whether redacted summaries may be committed to repository | CTO | TBD |
+| Whether incident exception records should be stored with evidence or separately | CTO | TBD |
+| Organizational data protection policy alignment review | CTO / Legal | TBD |
+
+---
+
 ## Compliance Notes
 
 - This policy applies to **staging dry-run evidence only**.
@@ -217,3 +526,4 @@ If evidence containing secrets or unredacted sensitive data is discovered:
 | Version | Date | Description |
 |---|---|---|
 | 1.0 | 2026-05-17 | Initial evidence storage policy — TASK-0049 |
+| 1.1 | 2026-05-17 | Added directory structure, screenshot/log/DB/HTTP policies, integrity, workflow, sharing, exception handling, compliance checklist, open questions |
