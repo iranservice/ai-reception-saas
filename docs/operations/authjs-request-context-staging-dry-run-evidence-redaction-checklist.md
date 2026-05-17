@@ -237,6 +237,58 @@ All commands should return **no matches**. Any match indicates redaction was inc
 
 ---
 
+## Redaction Failure Handling
+
+| Failure Type | Severity | Required Action |
+|---|---|---|
+| Secret exposed | P0 | Stop, remove evidence, rotate secret, incident process |
+| Token/cookie exposed | P0 | Stop, remove evidence, invalidate session/token if applicable |
+| Wrong tenant/customer data exposed | P1 | Stop, remove evidence, incident review |
+| Unmasked email | P2 | Redact and re-review |
+| Filename leak | P2 | Rename and re-review |
+| Optional screenshot not redacted | P2/P3 | Redact or remove |
+| Unclear false positive | P2 | Reviewer decision required |
+
+### Rules
+
+1. P0/P1 findings block storage and review approval.
+2. P0 findings require incident owner notification.
+3. Evidence with P0/P1 findings must not be shared beyond required incident responders.
+4. Corrected evidence must be re-reviewed from the beginning.
+
+---
+
+## Reviewer Sign-Off
+
+| Field | Value |
+|---|---|
+| Reviewer Name | TBD |
+| Review Date | TBD |
+| Checklist Version Used | TBD |
+| Must Never Appear | PASS / FAIL |
+| Must Mask Or Minimize | PASS / FAIL |
+| HTTP Evidence | PASS / FAIL |
+| Log Evidence | PASS / FAIL |
+| Screenshot Evidence | PASS / FAIL |
+| Database Evidence | PASS / FAIL |
+| File Names | PASS / FAIL |
+| Manual Pattern Search | PASS / FAIL |
+| Overall Redaction | PASS / FAIL |
+| P0/P1 Findings | None / Description |
+| Follow-Up Required | None / Description |
+| Reviewer Decision | APPROVED / REJECTED / CONDITIONAL |
+| Reviewer Notes | TBD |
+
+### Sign-Off Rules
+
+1. Reviewer must complete all sections before signing off.
+2. Any FAIL result requires documented follow-up action.
+3. Any P0/P1 finding results in automatic REJECTED decision.
+4. CONDITIONAL approval requires re-review after corrections.
+5. Only APPROVED evidence may proceed to CTO review.
+
+---
+
 ## Redaction Summary
 
 | Section | Items Checked | Pass | Fail | Notes |
@@ -283,3 +335,4 @@ All commands should return **no matches**. Any match indicates redaction was inc
 | Version | Date | Description |
 |---|---|---|
 | 1.0 | 2026-05-17 | Initial evidence redaction checklist — TASK-0050 |
+| 1.1 | 2026-05-17 | Added redaction failure handling and reviewer sign-off sections |

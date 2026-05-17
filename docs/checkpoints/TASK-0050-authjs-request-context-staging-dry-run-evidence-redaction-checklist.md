@@ -39,6 +39,8 @@ None.
 | Database Evidence Redaction | 9-item table with actions |
 | File Name Redaction | 6-item table with checks |
 | Manual Pattern Search | 6 grep commands with results table |
+| Redaction Failure Handling | 7 failure types with severity and actions, 4 rules |
+| Reviewer Sign-Off | 16-field sign-off table, 5 sign-off rules |
 | Redaction Summary | 79-item summary table with outcome record |
 
 ## Scope Confirmation
@@ -87,7 +89,7 @@ None.
 
 ## Decision
 
-Accepted Auth.js request-context staging dry-run evidence redaction checklist; dry-run execution, storage implementation, rollout changes, middleware, UI, and instrumentation remain deferred.
+Accepted Auth.js request-context staging dry-run evidence redaction checklist; dry-run execution, evidence redaction, storage implementation, rollout changes, middleware, UI, and instrumentation remain deferred.
 
 ## Recommended Next Task
 
