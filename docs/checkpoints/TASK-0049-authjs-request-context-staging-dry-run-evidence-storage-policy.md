@@ -92,8 +92,8 @@ None.
 
 ## Decision
 
-Accepted Auth.js request-context staging dry-run evidence storage policy; dry-run execution, rollout changes, middleware, UI, and instrumentation remain deferred.
+Accepted Auth.js request-context staging dry-run evidence storage policy; dry-run execution, storage implementation, rollout changes, middleware, UI, and instrumentation remain deferred.
 
 ## Recommended Next Task
 
-[Phase 2] TASK-0050: Auth.js request-context staging dry-run documentation index
+[Phase 2] TASK-0050: Auth.js request-context staging dry-run evidence redaction checklist
