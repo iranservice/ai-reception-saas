@@ -89,7 +89,7 @@ None.
 
 ## Decision
 
-Accepted Auth.js request-context staging dry-run evidence redaction checklist; dry-run execution, storage implementation, rollout changes, middleware, UI, and instrumentation remain deferred.
+Accepted Auth.js request-context staging dry-run evidence redaction checklist; redaction execution, dry-run execution, rollout changes, middleware, UI, and instrumentation remain deferred.
 
 ## Recommended Next Task
 
