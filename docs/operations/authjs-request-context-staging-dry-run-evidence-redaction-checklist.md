@@ -262,30 +262,20 @@ All commands should return **no matches**. Any match indicates redaction was inc
 
 | Field | Value |
 |---|---|
-| Reviewer Name | TBD |
-| Review Date | TBD |
-| Checklist Version Used | TBD |
-| Must Never Appear | PASS / FAIL |
-| Must Mask Or Minimize | PASS / FAIL |
-| HTTP Evidence | PASS / FAIL |
-| Log Evidence | PASS / FAIL |
-| Screenshot Evidence | PASS / FAIL |
-| Database Evidence | PASS / FAIL |
-| File Names | PASS / FAIL |
-| Manual Pattern Search | PASS / FAIL |
-| Overall Redaction | PASS / FAIL |
-| P0/P1 Findings | None / Description |
-| Follow-Up Required | None / Description |
-| Reviewer Decision | APPROVED / REJECTED / CONDITIONAL |
-| Reviewer Notes | TBD |
+| Evidence Pack | TBD |
+| Redaction Review Date | TBD |
+| Operator | TBD |
+| Reviewer | TBD |
+| Result | PASS / FAIL / PASS_WITH_NOTES |
+| Blocking Findings | TBD |
+| Non-Blocking Findings | TBD |
+| Follow-Up Tasks | TBD |
 
-### Sign-Off Rules
+Reviewer decision rules:
 
-1. Reviewer must complete all sections before signing off.
-2. Any FAIL result requires documented follow-up action.
-3. Any P0/P1 finding results in automatic REJECTED decision.
-4. CONDITIONAL approval requires re-review after corrections.
-5. Only APPROVED evidence may proceed to CTO review.
+- `PASS` requires zero P0/P1/P2 unresolved findings.
+- `PASS_WITH_NOTES` may be used only for accepted P3 or explicitly tracked non-blocking P2 issues.
+- `FAIL` is required for any unresolved P0/P1 issue or any evidence containing prohibited values.
 
 ---
 
