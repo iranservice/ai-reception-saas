@@ -87,4 +87,4 @@ Accepted Auth.js request-context staging dry-run preflight command checklist; dr
 
 ## Recommended Next Task
 
-[Phase 3] TASK-0049: Execute Auth.js request-context staging dry-run using approved operator packet and preflight checklist.
+[Phase 2] TASK-0049: Auth.js request-context staging dry-run evidence storage policy
