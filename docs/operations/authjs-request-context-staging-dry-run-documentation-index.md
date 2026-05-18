@@ -117,3 +117,42 @@ TASK-0042 rollout plan
 TASK-0051 documentation index
   └── navigation layer over TASK-0042 through TASK-0050
 ```
+
+## Decision Boundaries
+
+- Completing this index does not approve dry-run execution.
+- Completing readiness sign-off does not approve production rollout.
+- Dry-run approval does not approve production rollout.
+- Evidence review approval does not imply middleware/UI/instrumentation approval.
+- Any P0/P1 issue blocks execution or approval until resolved.
+
+## Deferred Work
+
+The following remain explicitly deferred:
+
+- dry-run execution
+- staging rollout changes
+- production rollout planning
+- middleware
+- UI
+- logging implementation
+- metrics implementation
+- instrumentation
+- storage implementation
+- automated evidence collection
+- authz policy changes
+- domain service changes
+- Prisma schema/migrations
+- package additions
+
+## Final Documentation Checklist
+
+- [ ] all TASK-0042 through TASK-0050 artifacts exist
+- [ ] all artifacts are linked in this index
+- [ ] reading order is documented
+- [ ] role-based navigation is documented
+- [ ] stage-to-artifact map is documented
+- [ ] gates before execution are documented
+- [ ] deferred work is explicit
+- [ ] no execution happened in this task
+- [ ] no runtime behavior changed in this task
