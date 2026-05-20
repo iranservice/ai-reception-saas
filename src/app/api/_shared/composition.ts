@@ -21,21 +21,11 @@ import {
   createAuditRepository,
   type AuditRepositoryDb,
 } from '@/domains/audit/repository';
-import {
-  createCatalogRepository,
-  type CatalogRepositoryDb,
-} from '@/domains/catalog/repository';
-import {
-  createOrdersRepository,
-  type OrdersRepositoryDb,
-} from '@/domains/orders/repository';
 
 import { createIdentityService } from '@/domains/identity/implementation';
 import { createTenancyService } from '@/domains/tenancy/implementation';
 import { createAuthzService } from '@/domains/authz/implementation';
 import { createAuditService } from '@/domains/audit/implementation';
-import { createCatalogService } from '@/domains/catalog/implementation';
-import { createOrdersService } from '@/domains/orders/implementation';
 
 import type {
   ApiDependencies,
@@ -76,25 +66,6 @@ function toAuditRepositoryDb(
   };
 }
 
-/** Extracts only the delegates required by CatalogRepositoryDb */
-function toCatalogRepositoryDb(
-  prisma: PrismaCompatibleClient,
-): CatalogRepositoryDb {
-  return {
-    serviceCategory: prisma.serviceCategory,
-    service: prisma.service,
-  };
-}
-
-/** Extracts only the delegates required by OrdersRepositoryDb */
-function toOrdersRepositoryDb(
-  prisma: PrismaCompatibleClient,
-): OrdersRepositoryDb {
-  return {
-    serviceRequest: prisma.serviceRequest,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -121,12 +92,6 @@ export function createApiDependencies(
   const auditRepository = createAuditRepository(
     toAuditRepositoryDb(prisma),
   );
-  const catalogRepository = createCatalogRepository(
-    toCatalogRepositoryDb(prisma),
-  );
-  const ordersRepository = createOrdersRepository(
-    toOrdersRepositoryDb(prisma),
-  );
 
   // Wire services
   const identityService = createIdentityService({
@@ -139,28 +104,18 @@ export function createApiDependencies(
   const auditService = createAuditService({
     repository: auditRepository,
   });
-  const catalogService = createCatalogService({
-    repository: catalogRepository,
-  });
-  const ordersService = createOrdersService({
-    repository: ordersRepository,
-  });
 
   return {
     repositories: {
       identity: identityRepository,
       tenancy: tenancyRepository,
       audit: auditRepository,
-      catalog: catalogRepository,
-      orders: ordersRepository,
     },
     services: {
       identity: identityService,
       tenancy: tenancyService,
       authz: authzService,
       audit: auditService,
-      catalog: catalogService,
-      orders: ordersService,
     },
   };
 }

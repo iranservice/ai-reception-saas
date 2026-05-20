@@ -373,25 +373,3 @@ describe('Prisma Schema — Auth Provider Persistence (TASK-0031)', () => {
     expect(body).toContain('@@map("sessions")');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Service catalog currency tests (TASK-0001)
-// ---------------------------------------------------------------------------
-
-describe('Prisma Schema — Service Catalog (TASK-0001)', () => {
-  it('Service model currency defaults to AED', () => {
-    const serviceModel = schema.match(/model\s+Service\s*\{([\s\S]+?)\}/);
-    expect(serviceModel).not.toBeNull();
-    const currencyLine = serviceModel![1].match(/^\s+currency\s+.*/m);
-    expect(currencyLine).not.toBeNull();
-    expect(currencyLine![0]).toContain('@default("AED")');
-    expect(currencyLine![0]).not.toContain('IRR');
-  });
-
-  it('Service model has code field with @unique', () => {
-    const serviceModel = schema.match(/model\s+Service\s*\{([\s\S]+?)\}/);
-    expect(serviceModel).not.toBeNull();
-    expect(serviceModel![1]).toContain('code');
-    expect(serviceModel![1]).toMatch(/code\s+String\s+@unique/);
-  });
-});

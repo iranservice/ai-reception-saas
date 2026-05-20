@@ -1,26 +1,22 @@
 # Orders Domain
 
 **Owner:** Orders module
-**Responsibility:** Service request lifecycle, status transitions, reference number generation, request tracking.
+**Responsibility:** Orders, order items, order lifecycle, customer confirmation, order status, pricing/refund/discount foundations.
 
 ## Owns
 
-- Service request CRUD
-- Service request status lifecycle (NEW → PENDING_DOCUMENTS → UNDER_REVIEW → COMPLETED / CANCELLED)
-- Reference number generation
-- Status transition validation (server-enforced)
-- Request metadata
+- Order CRUD and state machine
+- Order items
+- Customer order confirmation
+- Pricing, refunds, and discounts
+- Order status tracking
 
 ## Dependencies
 
-- Identity (requestedBy user)
-- Tenancy (business scope)
-- Catalog (service reference)
+- Identity, Tenancy, CRM, Conversations
 
 ## Anti-Patterns
 
-- ❌ Do NOT put service catalog data here — that belongs in **Catalog**
 - ❌ Do NOT put payment processing here — that belongs in **Billing**
 - ❌ Do NOT put customer data here — that belongs in **CRM**
 - ❌ Do NOT put conversation messages here — that belongs in **Conversations**
-- ❌ Do NOT allow client-side status transitions — must be **server-enforced**

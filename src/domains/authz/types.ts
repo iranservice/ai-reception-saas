@@ -29,10 +29,6 @@ export const AUTHZ_PERMISSION_VALUES = [
   'audit.read',
   'settings.read',
   'settings.update',
-  'catalog.read',
-  'orders.read',
-  'orders.create',
-  'orders.update_status',
 ] as const;
 
 /** A known permission string */
