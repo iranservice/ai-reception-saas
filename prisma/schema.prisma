@@ -258,7 +258,7 @@ model Service {
   descriptionFA String?  @map("description_fa")
   estimatedDays Int?     @map("estimated_days")
   basePrice     Decimal? @map("base_price") @db.Decimal(12, 2)
-  currency      String   @default("IRR")
+  currency      String   @default("AED")
   sortOrder     Int      @default(0) @map("sort_order")
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at")

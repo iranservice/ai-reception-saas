@@ -44,7 +44,7 @@ const MOCK_SERVICE: ServiceIdentity = {
   descriptionFA: 'ثبت شرکت برای مالیات',
   estimatedDays: 14,
   basePrice: null,
-  currency: 'IRR',
+  currency: 'AED',
   sortOrder: 1,
   isActive: true,
   createdAt: '2026-01-15T12:00:00.000Z',

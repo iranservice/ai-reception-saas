@@ -96,6 +96,7 @@ async function main() {
       descriptionFA: 'ثبت شرکت شما برای تعهدات مالیاتی شرکتی',
       categoryId: taxServices.id,
       estimatedDays: 14,
+      currency: 'AED',
       sortOrder: 1,
     },
     {
@@ -107,6 +108,7 @@ async function main() {
       descriptionFA: 'افتتاح حساب بانکی تجاری برای شرکت‌های با فعالیت‌های کم‌ریسک',
       categoryId: bankingServices.id,
       estimatedDays: 7,
+      currency: 'AED',
       sortOrder: 1,
     },
     {
@@ -118,6 +120,7 @@ async function main() {
       descriptionFA: 'تمدید جواز کسب موجود شما قبل از انقضا',
       categoryId: renewalServices.id,
       estimatedDays: 10,
+      currency: 'AED',
       sortOrder: 1,
     },
     {
@@ -129,6 +132,7 @@ async function main() {
       descriptionFA: 'درخواست ویزای توریستی ۳۰ روزه',
       categoryId: tourismServices.id,
       estimatedDays: 5,
+      currency: 'AED',
       sortOrder: 1,
     },
     {
@@ -140,6 +144,7 @@ async function main() {
       descriptionFA: 'تغییر رسمی نام ثبت‌شده کسب‌وکار شما',
       categoryId: licenseModificationServices.id,
       estimatedDays: 21,
+      currency: 'AED',
       sortOrder: 1,
     },
   ];

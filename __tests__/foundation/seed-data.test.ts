@@ -124,6 +124,15 @@ describe('Seed pilot services', () => {
     const estimatedDaysCount = (seedContent.match(/estimatedDays:/g) || []).length;
     expect(estimatedDaysCount).toBe(5);
   });
+
+  it('all services explicitly set currency AED', () => {
+    const aedCount = (seedContent.match(/currency:\s*'AED'/g) || []).length;
+    expect(aedCount).toBe(5);
+  });
+
+  it('no pilot service uses IRR currency', () => {
+    expect(seedContent).not.toContain("currency: 'IRR'");
+  });
 });
 
 // ===========================================================================

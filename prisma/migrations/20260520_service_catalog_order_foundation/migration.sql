@@ -28,7 +28,7 @@ CREATE TABLE "services" (
     "description_fa" TEXT,
     "estimated_days" INTEGER,
     "base_price" DECIMAL(12,2),
-    "currency" TEXT NOT NULL DEFAULT 'IRR',
+    "currency" TEXT NOT NULL DEFAULT 'AED',
     "sort_order" INTEGER NOT NULL DEFAULT 0,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
