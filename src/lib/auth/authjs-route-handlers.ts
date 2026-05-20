@@ -177,12 +177,25 @@ export function createAuthjsRouteHandlers(
   });
 
   // Wrap NextAuth's overloaded auth() into a request-aware function.
-  // NextAuth's auth has many overloaded signatures; we narrow it to
-  // a single (request: Request) => Promise<session | null> contract.
+  //
+  // Auth.js v5 auth() overloads:
+  //   auth()                   → reads session via next/headers (correct for App Router)
+  //   auth(request)            → middleware invocation (returns Response, NOT session!)
+  //   auth(handlerFn)          → wraps a route handler
+  //   auth(req, res)           → Pages Router API routes
+  //   auth(getServerSideProps) → Pages Router SSR
+  //
+  // IMPORTANT: Passing a Request to auth() triggers the middleware path,
+  // which returns a Response object instead of a Session. The correct
+  // pattern for App Router route handlers is auth() with NO arguments.
+  // Auth.js reads cookies from next/headers automatically.
+  //
+  // The request parameter is kept in the function signature to satisfy
+  // the AuthjsSessionReader contract used by the adapter layer.
   const requestAwareAuth = async (
-    request: Request,
+    _request: Request,
   ): Promise<Record<string, unknown> | null> => {
-    const session = await nextAuth.auth(request as never);
+    const session = await nextAuth.auth();
     return session as Record<string, unknown> | null;
   };
 

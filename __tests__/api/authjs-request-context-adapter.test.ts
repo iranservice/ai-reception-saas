@@ -916,6 +916,31 @@ describe('TASK-0039 scope guards', () => {
     );
     expect(content).not.toContain('setAuthjsAuth');
   });
+
+  // Regression: Auth.js v5 auth(request) triggers middleware path, returning
+  // a Response instead of Session. The correct App Router pattern is auth()
+  // with no arguments. This scope guard prevents reintroduction of the bug.
+  it('authjs-route-handlers.ts calls auth() without passing request — prevents middleware-path regression', () => {
+    const content = fs.readFileSync(
+      path.join(PROJECT_ROOT, 'src/lib/auth/authjs-route-handlers.ts'),
+      'utf-8',
+    );
+    // Must call nextAuth.auth() with no arguments
+    expect(content).toContain('nextAuth.auth()');
+    // Must NOT pass request to auth — that triggers middleware overload
+    expect(content).not.toContain('nextAuth.auth(request');
+    expect(content).not.toContain('auth(request as never)');
+  });
+
+  it('authjs-route-handlers.ts uses _request to indicate unused parameter', () => {
+    const content = fs.readFileSync(
+      path.join(PROJECT_ROOT, 'src/lib/auth/authjs-route-handlers.ts'),
+      'utf-8',
+    );
+    // The request parameter should be prefixed with _ to indicate it's
+    // kept for contract compatibility but not used in the auth() call
+    expect(content).toContain('_request: Request');
+  });
 });
 
 // ---------------------------------------------------------------------------
