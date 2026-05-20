@@ -61,6 +61,14 @@ enum AuditResult {
   FAILED
 }
 
+enum ServiceRequestStatus {
+  NEW
+  PENDING_DOCUMENTS
+  UNDER_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
 // ===========================================================================
 // Models — Identity Domain
 // ===========================================================================
@@ -82,6 +90,7 @@ model User {
   invitedMemberships BusinessMembership[] @relation("MembershipInviter")
   auditEvents        AuditEvent[]         @relation("AuditActor")
   accounts           Account[]
+  serviceRequests    ServiceRequest[]     @relation("ServiceRequestUser")
 
   @@map("users")
 }
@@ -121,8 +130,9 @@ model Business {
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
   createdByUser User                 @relation("BusinessCreator", fields: [createdByUserId], references: [id])
-  memberships   BusinessMembership[]
-  auditEvents   AuditEvent[]
+  memberships      BusinessMembership[]
+  auditEvents      AuditEvent[]
+  serviceRequests  ServiceRequest[]
 
   @@index([status])
   @@index([createdByUserId])
@@ -214,4 +224,80 @@ model AuditEvent {
   @@index([targetType, targetId])
   @@index([result])
   @@map("audit_events")
+}
+
+// ===========================================================================
+// Models — Catalog Domain (TASK-0001)
+// ===========================================================================
+
+model ServiceCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  nameFA      String   @map("name_fa")
+  slug        String   @unique
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  services Service[]
+
+  @@index([isActive, sortOrder])
+  @@map("service_categories")
+}
+
+model Service {
+  id            String   @id @default(uuid()) @db.Uuid
+  categoryId    String   @map("category_id") @db.Uuid
+  code          String   @unique @map("code")
+  name          String
+  nameFA        String   @map("name_fa")
+  slug          String   @unique
+  description   String?
+  descriptionFA String?  @map("description_fa")
+  estimatedDays Int?     @map("estimated_days")
+  basePrice     Decimal? @map("base_price") @db.Decimal(12, 2)
+  currency      String   @default("IRR")
+  sortOrder     Int      @default(0) @map("sort_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  category ServiceCategory @relation(fields: [categoryId], references: [id])
+  requests ServiceRequest[]
+
+  @@index([categoryId, isActive, sortOrder])
+  @@index([isActive, sortOrder])
+  @@map("services")
+}
+
+// ===========================================================================
+// Models — Orders Domain (TASK-0001)
+// ===========================================================================
+
+model ServiceRequest {
+  id          String               @id @default(uuid()) @db.Uuid
+  businessId  String               @map("business_id") @db.Uuid
+  serviceId   String               @map("service_id") @db.Uuid
+  requestedBy String               @map("requested_by") @db.Uuid
+  status      ServiceRequestStatus @default(NEW)
+  referenceNo String               @unique @map("reference_no")
+  notes       String?
+  metadata    Json?
+  completedAt DateTime?            @map("completed_at")
+  cancelledAt DateTime?            @map("cancelled_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id])
+  service  Service  @relation(fields: [serviceId], references: [id])
+  user     User     @relation("ServiceRequestUser", fields: [requestedBy], references: [id])
+
+  @@index([businessId, status])
+  @@index([businessId, createdAt])
+  @@index([requestedBy])
+  @@index([serviceId])
+  @@index([status])
+  @@map("service_requests")
 }

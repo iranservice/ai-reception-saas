@@ -36,6 +36,9 @@ export const ROLE_PERMISSIONS: RolePermissionMap = {
     'ai_drafts.read',
     'ai_drafts.generate',
     'ai_drafts.approve',
+    'catalog.read',
+    'orders.read',
+    'orders.create',
   ],
 
   VIEWER: [
@@ -43,6 +46,8 @@ export const ROLE_PERMISSIONS: RolePermissionMap = {
     'customers.read',
     'conversations.read',
     'messages.read',
+    'catalog.read',
+    'orders.read',
   ],
 } as const;
 

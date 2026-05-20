@@ -146,12 +146,56 @@ function createMockPrisma(): PrismaCompatibleClient {
     findMany: () => Promise.resolve([]),
   };
 
+  const serviceCategoryDelegate: PrismaCompatibleClient['serviceCategory'] = {
+    findUnique: () => Promise.resolve(null),
+    findMany: () => Promise.resolve([]),
+  };
+
+  const serviceDelegate: PrismaCompatibleClient['service'] = {
+    findUnique: () => Promise.resolve(null),
+    findMany: () => Promise.resolve([]),
+  };
+
+  const serviceRequestDelegate: PrismaCompatibleClient['serviceRequest'] = {
+    create: () =>
+      Promise.resolve({
+        ...stubRecord,
+        businessId: 'mock',
+        serviceId: 'mock',
+        requestedBy: 'mock',
+        status: 'NEW' as const,
+        referenceNo: 'SR-20260520-MOCK01',
+        notes: null,
+        metadata: null,
+        completedAt: null,
+        cancelledAt: null,
+      }),
+    findUnique: () => Promise.resolve(null),
+    findMany: () => Promise.resolve([]),
+    update: () =>
+      Promise.resolve({
+        ...stubRecord,
+        businessId: 'mock',
+        serviceId: 'mock',
+        requestedBy: 'mock',
+        status: 'NEW' as const,
+        referenceNo: 'SR-20260520-MOCK01',
+        notes: null,
+        metadata: null,
+        completedAt: null,
+        cancelledAt: null,
+      }),
+  };
+
   return {
     user: userDelegate,
     session: sessionDelegate,
     business: businessDelegate,
     businessMembership: membershipDelegate,
     auditEvent: auditEventDelegate,
+    serviceCategory: serviceCategoryDelegate,
+    service: serviceDelegate,
+    serviceRequest: serviceRequestDelegate,
   };
 }
 
