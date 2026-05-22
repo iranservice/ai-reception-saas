@@ -228,11 +228,14 @@ export function createListCustomersHandler(
     if (authzErr) return authzErr;
 
     const statusParam = getSearchParam(request, 'status');
-    const statusParsed = statusParam
-      ? customerStatusSchema.safeParse(statusParam)
-      : null;
-    const status =
-      statusParsed && statusParsed.success ? statusParsed.data : undefined;
+    let status: ReturnType<typeof customerStatusSchema.parse> | undefined;
+    if (statusParam !== null) {
+      const statusParsed = customerStatusSchema.safeParse(statusParam);
+      if (!statusParsed.success) {
+        return apiError('INVALID_CRM_INPUT', 'Invalid status filter', 400);
+      }
+      status = statusParsed.data;
+    }
 
     const search = getSearchParam(request, 'search') ?? undefined;
     const limit = parseIntegerQueryParam(getSearchParam(request, 'limit'));
@@ -607,7 +610,7 @@ export function createRemoveContactMethodHandler(
     );
     if (!paramsResult.ok) return paramsResult.response;
 
-    const { businessId, contactMethodId } = paramsResult.data;
+    const { businessId, customerId, contactMethodId } = paramsResult.data;
 
     const resolve = deps.resolveTenantContext ?? resolveTenantRequestContext;
     const contextResult = await resolve(request, {
@@ -624,12 +627,14 @@ export function createRemoveContactMethodHandler(
 
     const result = await deps.crmService.removeContactMethod({
       contactMethodId,
+      customerId,
       businessId,
     });
 
     if (result.ok) {
       emitAudit(deps, contextResult.context, 'customer_contact_method.delete', 'customer_contact_method', contactMethodId, {
         businessId,
+        customerId,
         contactMethodId,
       });
     }

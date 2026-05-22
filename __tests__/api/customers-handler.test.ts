@@ -209,6 +209,19 @@ describe('Customer Handler — LIST', () => {
       }),
     );
   });
+
+  it('returns 400 for invalid status query param', async () => {
+    const deps = makeDeps();
+    const handler = createListCustomersHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/customers?status=BAD`),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_CRM_INPUT');
+    expect(deps.crmService.listCustomers).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -517,6 +530,20 @@ describe('Customer Handler — REMOVE_CONTACT_METHOD', () => {
     expect(res.status).toBe(200);
   });
 
+  it('passes customerId, contactMethodId, and businessId to service', async () => {
+    const deps = makeDeps();
+    const handler = createRemoveContactMethodHandler(deps);
+    await handler(
+      makeRequest('DELETE', `http://localhost/api/businesses/${BUSINESS_ID}/customers/${CUSTOMER_ID}/contact-methods/${CONTACT_METHOD_ID}`),
+      { businessId: BUSINESS_ID, customerId: CUSTOMER_ID, contactMethodId: CONTACT_METHOD_ID },
+    );
+    expect(deps.crmService.removeContactMethod).toHaveBeenCalledWith({
+      contactMethodId: CONTACT_METHOD_ID,
+      customerId: CUSTOMER_ID,
+      businessId: BUSINESS_ID,
+    });
+  });
+
   it('returns 404 when not found', async () => {
     const deps = makeDeps();
     vi.mocked(deps.crmService.removeContactMethod).mockResolvedValueOnce(
@@ -758,6 +785,28 @@ describe('Customer Handler — audit logging', () => {
         }),
       );
     });
+  });
+
+  it('audit delete metadata includes customerId and no PII', async () => {
+    const deps = makeDeps();
+    const handler = createRemoveContactMethodHandler(deps);
+    await handler(
+      makeRequest('DELETE', `http://localhost/api/businesses/${BUSINESS_ID}/customers/${CUSTOMER_ID}/contact-methods/${CONTACT_METHOD_ID}`),
+      { businessId: BUSINESS_ID, customerId: CUSTOMER_ID, contactMethodId: CONTACT_METHOD_ID },
+    );
+    await vi.waitFor(() => {
+      expect(deps.auditService.createAuditEvent).toHaveBeenCalled();
+    });
+    const call = vi.mocked(deps.auditService.createAuditEvent).mock.calls[0][0];
+    const meta = call.metadata as Record<string, unknown>;
+    expect(meta).toEqual({
+      businessId: BUSINESS_ID,
+      customerId: CUSTOMER_ID,
+      contactMethodId: CONTACT_METHOD_ID,
+    });
+    const metadataStr = JSON.stringify(meta);
+    expect(metadataStr).not.toContain('test@example.com');
+    expect(metadataStr).not.toContain('value');
   });
 
   it('audit metadata does not include raw contact value', async () => {

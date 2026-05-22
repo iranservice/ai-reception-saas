@@ -283,11 +283,19 @@ export function createCrmService(deps: CrmServiceDeps): CrmService {
       if (!idResult.success) {
         return err(INVALID_INPUT_CODE, INVALID_INPUT_MSG);
       }
+      const custResult = uuidSchema.safeParse(input.customerId);
+      if (!custResult.success) {
+        return err(INVALID_INPUT_CODE, INVALID_INPUT_MSG);
+      }
 
-      // Verify contact method exists and belongs to the business
+      // Verify contact method exists and belongs to the business AND customer
       const existing = await repository.findContactMethodById(idResult.data);
       if (!existing.ok) return existing;
-      if (!existing.data || existing.data.businessId !== input.businessId) {
+      if (
+        !existing.data ||
+        existing.data.businessId !== input.businessId ||
+        existing.data.customerId !== input.customerId
+      ) {
         return err(CM_NOT_FOUND_CODE, 'Contact method not found');
       }
 

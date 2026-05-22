@@ -342,6 +342,7 @@ describe('CrmService.removeContactMethod', () => {
   it('removes existing contact method', async () => {
     const result = await service.removeContactMethod({
       contactMethodId: CONTACT_ID,
+      customerId: CUSTOMER_ID,
       businessId: BUSINESS_ID,
     });
     expect(result.ok).toBe(true);
@@ -351,6 +352,7 @@ describe('CrmService.removeContactMethod', () => {
     vi.mocked(mockRepo.findContactMethodById).mockResolvedValueOnce(ok(null));
     const result = await service.removeContactMethod({
       contactMethodId: CONTACT_ID,
+      customerId: CUSTOMER_ID,
       businessId: BUSINESS_ID,
     });
     expect(result.ok).toBe(false);
@@ -365,6 +367,23 @@ describe('CrmService.removeContactMethod', () => {
     );
     const result = await service.removeContactMethod({
       contactMethodId: CONTACT_ID,
+      customerId: CUSTOMER_ID,
+      businessId: BUSINESS_ID,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONTACT_METHOD_NOT_FOUND');
+    }
+  });
+
+  it('rejects if contact method belongs to different customer in same business', async () => {
+    const OTHER_CUSTOMER_ID = '990e8400-e29b-41d4-a716-446655440000';
+    vi.mocked(mockRepo.findContactMethodById).mockResolvedValueOnce(
+      ok({ ...MOCK_CONTACT, customerId: OTHER_CUSTOMER_ID }),
+    );
+    const result = await service.removeContactMethod({
+      contactMethodId: CONTACT_ID,
+      customerId: CUSTOMER_ID,
       businessId: BUSINESS_ID,
     });
     expect(result.ok).toBe(false);
@@ -402,6 +421,7 @@ describe('CRM tenant isolation', () => {
     );
     const result = await service.removeContactMethod({
       contactMethodId: CONTACT_ID,
+      customerId: CUSTOMER_ID,
       businessId: BUSINESS_ID,
     });
     expect(result.ok).toBe(false);
