@@ -62,6 +62,7 @@ export interface UpdateContactMethodServiceInput {
 /** Input for removing a contact method */
 export interface RemoveContactMethodInput {
   readonly contactMethodId: string;
+  readonly customerId: string;
   readonly businessId: string;
 }
 
