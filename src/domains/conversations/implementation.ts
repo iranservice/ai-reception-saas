@@ -3,6 +3,9 @@
 //
 // Concrete ConversationService backed by validation + injected repository
 // and audit service for sensitive action logging.
+//
+// Tenant integrity: All customer IDs are verified to belong to the same
+// business via repository.findCustomerInBusiness before use.
 // ===========================================================================
 
 import { err } from '@/lib/result';
@@ -20,6 +23,7 @@ import {
   validateInitialMessageInput,
   validateTransition,
   isAuditRequiredTransition,
+  isValidUuid,
   OPERATOR_ALLOWED_DIRECTIONS,
 } from './validation';
 
@@ -41,7 +45,7 @@ const INVALID_INPUT = 'INVALID_CONVERSATION_INPUT';
 const INVALID_MSG_INPUT = 'INVALID_MESSAGE_INPUT';
 const NOT_FOUND = 'CONVERSATION_NOT_FOUND';
 const INVALID_TRANSITION = 'INVALID_CONVERSATION_TRANSITION';
-const INVALID_ASSIGNMENT = 'INVALID_ASSIGNMENT';
+const CUSTOMER_NOT_IN_BUSINESS = 'CUSTOMER_NOT_IN_BUSINESS';
 const CUSTOMER_ALREADY_LINKED = 'CUSTOMER_ALREADY_LINKED';
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -92,6 +96,27 @@ export function createConversationService(
       });
   }
 
+  // -------------------------------------------------------------------------
+  // Tenant-safe customer verification helper
+  // -------------------------------------------------------------------------
+  async function verifyCustomerInBusiness(
+    customerId: string,
+    businessId: string,
+    fieldLabel: string,
+  ): Promise<{ ok: true } | { ok: false; code: string; message: string }> {
+    if (!isValidUuid(customerId)) {
+      return { ok: false, code: INVALID_INPUT, message: `${fieldLabel} must be a valid UUID` };
+    }
+    const customerLookup = await repository.findCustomerInBusiness(customerId, businessId);
+    if (!customerLookup.ok) {
+      return { ok: false, code: 'CONVERSATION_REPOSITORY_ERROR', message: 'Failed to verify customer' };
+    }
+    if (!customerLookup.data) {
+      return { ok: false, code: CUSTOMER_NOT_IN_BUSINESS, message: `${fieldLabel} does not belong to this business` };
+    }
+    return { ok: true };
+  }
+
   return {
     // -----------------------------------------------------------------------
     // Conversations
@@ -103,11 +128,31 @@ export function createConversationService(
         return err(INVALID_INPUT, validation.errors.join('; '));
       }
 
-      // FIX 3: Validate initialMessage BEFORE creating conversation
+      // Validate initialMessage BEFORE creating conversation
       if (input.initialMessage) {
         const msgValidation = validateInitialMessageInput(input.initialMessage);
         if (!msgValidation.valid) {
           return err(INVALID_MSG_INPUT, msgValidation.errors.join('; '));
+        }
+      }
+
+      // Verify customer belongs to same business (tenant integrity)
+      if (input.customerId) {
+        const check = await verifyCustomerInBusiness(input.customerId, input.businessId, 'customerId');
+        if (!check.ok) {
+          return err(check.code, check.message);
+        }
+      }
+
+      // Verify initialMessage.senderCustomerId belongs to same business
+      if (input.initialMessage?.senderCustomerId) {
+        const check = await verifyCustomerInBusiness(
+          input.initialMessage.senderCustomerId,
+          input.businessId,
+          'initialMessage.senderCustomerId',
+        );
+        if (!check.ok) {
+          return err(check.code, check.message);
         }
       }
 
@@ -132,7 +177,7 @@ export function createConversationService(
         if (!msgResult.ok) return msgResult;
       }
 
-      // FIX 5: Use actorUserId from input for audit
+      // Emit audit — conversation.created
       emitAudit(
         input.businessId,
         input.actorUserId,
@@ -214,6 +259,14 @@ export function createConversationService(
         );
       }
 
+      // Verify new customer belongs to same business (tenant integrity)
+      if (input.data.customerId && existing.data.customerId === null) {
+        const check = await verifyCustomerInBusiness(input.data.customerId, input.businessId, 'customerId');
+        if (!check.ok) {
+          return err(check.code, check.message);
+        }
+      }
+
       const updateData: Record<string, unknown> = {};
       if (input.data.customerId !== undefined)
         updateData.customerId = input.data.customerId;
@@ -228,7 +281,7 @@ export function createConversationService(
       );
       if (!updateResult.ok) return updateResult;
 
-      // FIX 5: Emit audit with actorUserId if customer was linked
+      // Emit audit with actorUserId if customer was linked
       if (
         input.data.customerId &&
         existing.data.customerId === null
@@ -257,74 +310,11 @@ export function createConversationService(
       };
     },
 
-    async assignConversation(input) {
-      // Verify conversation exists
-      const existing = await repository.findConversationById(
-        input.conversationId,
-        input.businessId,
-      );
-      if (!existing.ok) return existing;
-      if (!existing.data) {
-        return err(NOT_FOUND, 'Conversation not found');
-      }
-
-      if (!input.assignedUserId) {
-        return err(INVALID_ASSIGNMENT, 'assignedUserId is required');
-      }
-
-      const previousAssignedUserId = existing.data.assignedUserId;
-
-      // Determine status transition based on current status
-      let newStatus = existing.data.status;
-      if (
-        existing.data.status === 'NEW' ||
-        existing.data.status === 'OPEN' ||
-        existing.data.status === 'ESCALATED'
-      ) {
-        newStatus = 'ASSIGNED';
-      }
-
-      const updateResult = await repository.updateConversation(
-        input.conversationId,
-        {
-          assignedUserId: input.assignedUserId,
-          status: newStatus,
-        },
-      );
-      if (!updateResult.ok) return updateResult;
-
-      // Emit audit — conversation.assigned
-      emitAudit(
-        input.businessId,
-        input.actorUserId,
-        'conversation.assigned',
-        'conversation',
-        input.conversationId,
-        {
-          assignedUserId: input.assignedUserId,
-          ...(previousAssignedUserId
-            ? { previousAssignedUserId }
-            : {}),
-        },
-      );
-
-      // Emit status change audit if status changed
-      if (newStatus !== existing.data.status) {
-        emitAudit(
-          input.businessId,
-          input.actorUserId,
-          'conversation.status_changed',
-          'conversation',
-          input.conversationId,
-          {
-            fromStatus: existing.data.status,
-            toStatus: newStatus,
-          },
-        );
-      }
-
-      return updateResult;
-    },
+    // NOTE: assignConversation deferred to R4.
+    // The schema retains assignedUserId, but the assignment operation requires
+    // membership verification (is assignedUserId a member of businessId?)
+    // which is outside R2 scope. R4 will add this with authz dependency.
+    // TODO(R4): Implement assignConversation with membership check.
 
     async changeStatus(input) {
       // Verify conversation exists
@@ -397,7 +387,7 @@ export function createConversationService(
         direction === 'OUTBOUND' ? 'OPERATOR' : 'CUSTOMER'
       );
 
-      // FIX 4: Include senderCustomerId in message input
+      // Include senderCustomerId in message input
       const msgInput = {
         conversationId: input.conversationId,
         businessId: input.businessId,
@@ -422,6 +412,18 @@ export function createConversationService(
       if (!existing.ok) return existing;
       if (!existing.data) {
         return err(NOT_FOUND, 'Conversation not found');
+      }
+
+      // Verify senderCustomerId belongs to same business (tenant integrity)
+      if (input.senderCustomerId) {
+        const check = await verifyCustomerInBusiness(
+          input.senderCustomerId,
+          input.businessId,
+          'senderCustomerId',
+        );
+        if (!check.ok) {
+          return err(check.code, check.message);
+        }
       }
 
       // Create the message

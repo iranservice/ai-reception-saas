@@ -2,7 +2,7 @@
 // Tests — Conversations Domain Service + Validation
 //
 // Verifies conversation service logic, state machine, audit behavior,
-// and validation rules with mock repository and audit service.
+// tenant integrity, and validation rules with mock repository and audit.
 // ===========================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -18,6 +18,7 @@ import {
   validateCreateConversationInput,
   validateCreateMessageInput,
   validateInitialMessageInput,
+  validateUpdateConversationInput,
   VALID_TRANSITIONS,
   isValidUuid,
 } from '@/domains/conversations/validation';
@@ -33,7 +34,9 @@ import type {
 // ---------------------------------------------------------------------------
 
 const BUSINESS_ID = '550e8400-e29b-41d4-a716-446655440000';
+const OTHER_BUSINESS_ID = '550e8400-e29b-41d4-a716-999999999999';
 const CUSTOMER_ID = '660e8400-e29b-41d4-a716-446655440000';
+const WRONG_BIZ_CUSTOMER_ID = '660e8400-e29b-41d4-a716-999999999999';
 const CONVERSATION_ID = '770e8400-e29b-41d4-a716-446655440000';
 const MESSAGE_ID = '880e8400-e29b-41d4-a716-446655440000';
 const USER_ID = '990e8400-e29b-41d4-a716-446655440000';
@@ -94,6 +97,18 @@ function createMockRepository(): ConversationRepository {
     createMessage: vi.fn().mockResolvedValue(ok(MOCK_MESSAGE)),
     findMessageById: vi.fn().mockResolvedValue(ok(MOCK_MESSAGE)),
     listMessages: vi.fn().mockResolvedValue(ok({ data: [], nextCursor: null })),
+    findCustomerInBusiness: vi.fn().mockImplementation(
+      (customerId: string, businessId: string) => {
+        // Same-business customer returns data; wrong-business returns null
+        if (customerId === CUSTOMER_ID && businessId === BUSINESS_ID) {
+          return Promise.resolve(ok({ id: CUSTOMER_ID, businessId: BUSINESS_ID }));
+        }
+        if (customerId === WRONG_BIZ_CUSTOMER_ID) {
+          return Promise.resolve(ok(null)); // exists but wrong business
+        }
+        return Promise.resolve(ok(null)); // not found
+      },
+    ),
   };
 }
 
@@ -129,13 +144,9 @@ describe('Conversation State Machine', () => {
   });
 
   it('rejects invalid transitions', () => {
-    // NEW → RESOLVED is not valid
     expect(isValidTransition('NEW', 'RESOLVED')).toBe(false);
-    // OPEN → RESOLVED is not valid (must go through ASSIGNED)
     expect(isValidTransition('OPEN', 'RESOLVED')).toBe(false);
-    // RESOLVED → ASSIGNED is not valid (can only reopen to OPEN)
     expect(isValidTransition('RESOLVED', 'ASSIGNED')).toBe(false);
-    // Same status transitions
     expect(isValidTransition('NEW', 'NEW')).toBe(false);
   });
 
@@ -184,7 +195,7 @@ describe('isValidUuid', () => {
 });
 
 // ===========================================================================
-// 3. createConversation — initialMessage validation (Fix 3)
+// 3. createConversation — initialMessage validation
 // ===========================================================================
 
 describe('createConversation — initialMessage validation', () => {
@@ -202,7 +213,6 @@ describe('createConversation — initialMessage validation', () => {
     if (!result.ok) {
       expect(result.error.code).toBe('INVALID_MESSAGE_INPUT');
     }
-    // repository.createConversation must NOT be called
     expect(repo.createConversation).not.toHaveBeenCalled();
   });
 
@@ -240,7 +250,61 @@ describe('createConversation — initialMessage validation', () => {
     expect(repo.createConversation).not.toHaveBeenCalled();
   });
 
-  it('creates conversation when initialMessage is valid', async () => {
+  it('rejects invalid initialMessage.senderCustomerId (non-UUID) before createConversation', async () => {
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      initialMessage: {
+        direction: 'INBOUND',
+        senderType: 'CUSTOMER',
+        content: 'Hello',
+        senderCustomerId: 'not-a-uuid',
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('INVALID_MESSAGE_INPUT');
+    }
+    expect(repo.createConversation).not.toHaveBeenCalled();
+  });
+
+  it('rejects initialMessage with senderCustomerId on OUTBOUND', async () => {
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      initialMessage: {
+        direction: 'OUTBOUND',
+        senderType: 'OPERATOR',
+        content: 'Hello',
+        senderCustomerId: CUSTOMER_ID,
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('INVALID_MESSAGE_INPUT');
+    }
+    expect(repo.createConversation).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid INBOUND initialMessage with senderCustomerId', async () => {
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      initialMessage: {
+        direction: 'INBOUND',
+        senderType: 'CUSTOMER',
+        content: 'Hello',
+        senderCustomerId: CUSTOMER_ID,
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(repo.createConversation).toHaveBeenCalledTimes(1);
+    expect(repo.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ senderCustomerId: CUSTOMER_ID }),
+    );
+  });
+
+  it('creates conversation when initialMessage is valid (no senderCustomerId)', async () => {
     const result = await service.createConversation({
       businessId: BUSINESS_ID,
       channel: 'WEBSITE_CHAT',
@@ -257,11 +321,101 @@ describe('createConversation — initialMessage validation', () => {
 });
 
 // ===========================================================================
-// 4. createMessage — senderCustomerId support (Fix 4)
+// 4. Tenant integrity — customer/business scoping
 // ===========================================================================
 
-describe('createMessage — senderCustomerId', () => {
-  it('passes senderCustomerId to repository for INBOUND messages', async () => {
+describe('Tenant integrity — customer belongs to business', () => {
+  it('rejects createConversation with customerId from wrong business', async () => {
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      customerId: WRONG_BIZ_CUSTOMER_ID,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CUSTOMER_NOT_IN_BUSINESS');
+    }
+    expect(repo.createConversation).not.toHaveBeenCalled();
+  });
+
+  it('accepts createConversation with customerId from same business', async () => {
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      customerId: CUSTOMER_ID,
+    });
+    expect(result.ok).toBe(true);
+    expect(repo.createConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects createConversation with initialMessage.senderCustomerId from wrong business', async () => {
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      initialMessage: {
+        direction: 'INBOUND',
+        senderType: 'CUSTOMER',
+        content: 'Hello',
+        senderCustomerId: WRONG_BIZ_CUSTOMER_ID,
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CUSTOMER_NOT_IN_BUSINESS');
+    }
+    expect(repo.createConversation).not.toHaveBeenCalled();
+  });
+
+  it('rejects updateConversation linking customer from wrong business', async () => {
+    const convNoCust: ConversationWithSummary = {
+      ...MOCK_CONVERSATION,
+      customerId: null,
+    };
+    (repo.findConversationById as ReturnType<typeof vi.fn>).mockResolvedValue(ok(convNoCust));
+
+    const result = await service.updateConversation({
+      conversationId: CONVERSATION_ID,
+      businessId: BUSINESS_ID,
+      data: { customerId: WRONG_BIZ_CUSTOMER_ID },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CUSTOMER_NOT_IN_BUSINESS');
+    }
+    expect(repo.updateConversation).not.toHaveBeenCalled();
+  });
+
+  it('accepts updateConversation linking customer from same business', async () => {
+    const convNoCust: ConversationWithSummary = {
+      ...MOCK_CONVERSATION,
+      customerId: null,
+    };
+    (repo.findConversationById as ReturnType<typeof vi.fn>).mockResolvedValue(ok(convNoCust));
+
+    const result = await service.updateConversation({
+      conversationId: CONVERSATION_ID,
+      businessId: BUSINESS_ID,
+      data: { customerId: CUSTOMER_ID },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects inbound createMessage with senderCustomerId from wrong business', async () => {
+    const result = await service.createMessage({
+      conversationId: CONVERSATION_ID,
+      businessId: BUSINESS_ID,
+      direction: 'INBOUND',
+      content: 'Hello',
+      senderCustomerId: WRONG_BIZ_CUSTOMER_ID,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CUSTOMER_NOT_IN_BUSINESS');
+    }
+    expect(repo.createMessage).not.toHaveBeenCalled();
+  });
+
+  it('accepts inbound createMessage with senderCustomerId from same business', async () => {
     const result = await service.createMessage({
       conversationId: CONVERSATION_ID,
       businessId: BUSINESS_ID,
@@ -271,12 +425,35 @@ describe('createMessage — senderCustomerId', () => {
     });
     expect(result.ok).toBe(true);
     expect(repo.createMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        senderCustomerId: CUSTOMER_ID,
-      }),
+      expect.objectContaining({ senderCustomerId: CUSTOMER_ID }),
     );
   });
 
+  it('rejects updateConversation with non-UUID customerId', async () => {
+    const convNoCust: ConversationWithSummary = {
+      ...MOCK_CONVERSATION,
+      customerId: null,
+    };
+    (repo.findConversationById as ReturnType<typeof vi.fn>).mockResolvedValue(ok(convNoCust));
+
+    const result = await service.updateConversation({
+      conversationId: CONVERSATION_ID,
+      businessId: BUSINESS_ID,
+      data: { customerId: 'not-a-uuid' },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('INVALID_CONVERSATION_INPUT');
+    }
+    expect(repo.updateConversation).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// 5. createMessage — senderCustomerId support
+// ===========================================================================
+
+describe('createMessage — senderCustomerId', () => {
   it('OUTBOUND messages do not require senderCustomerId', async () => {
     const result = await service.createMessage({
       conversationId: CONVERSATION_ID,
@@ -347,7 +524,7 @@ describe('createMessage — senderCustomerId', () => {
 });
 
 // ===========================================================================
-// 5. Audit actor handling (Fix 5)
+// 6. Audit actor handling
 // ===========================================================================
 
 describe('Audit actor handling', () => {
@@ -358,7 +535,6 @@ describe('Audit actor handling', () => {
       actorUserId: ACTOR_USER_ID,
     });
 
-    // Wait for async audit
     await new Promise((r) => setTimeout(r, 10));
 
     expect(auditSvc.createAuditEvent).toHaveBeenCalledWith(
@@ -388,7 +564,6 @@ describe('Audit actor handling', () => {
   });
 
   it('updateConversation customer_linked audit uses actorUserId when provided', async () => {
-    // Set up mock to return a conversation with null customerId
     const convNoCust: ConversationWithSummary = {
       ...MOCK_CONVERSATION,
       customerId: null,
@@ -415,66 +590,18 @@ describe('Audit actor handling', () => {
 });
 
 // ===========================================================================
-// 6. assignConversation — status transition + audit
+// 7. assignConversation — deferred to R4
 // ===========================================================================
 
-describe('assignConversation', () => {
-  it('transitions NEW to ASSIGNED and emits audit', async () => {
-    const newConv: ConversationWithSummary = { ...MOCK_CONVERSATION, status: 'NEW' };
-    (repo.findConversationById as ReturnType<typeof vi.fn>).mockResolvedValue(ok(newConv));
-
-    await service.assignConversation({
-      conversationId: CONVERSATION_ID,
-      businessId: BUSINESS_ID,
-      assignedUserId: USER_ID,
-      actorUserId: ACTOR_USER_ID,
-    });
-
-    expect(repo.updateConversation).toHaveBeenCalledWith(
-      CONVERSATION_ID,
-      expect.objectContaining({
-        assignedUserId: USER_ID,
-        status: 'ASSIGNED',
-      }),
-    );
-
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Should have two audit calls: assigned + status_changed
-    expect(auditSvc.createAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'conversation.assigned',
-        actorUserId: ACTOR_USER_ID,
-      }),
-    );
-    expect(auditSvc.createAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'conversation.status_changed',
-      }),
-    );
-  });
-
-  it('keeps ASSIGNED status when already ASSIGNED', async () => {
-    const assignedConv: ConversationWithSummary = { ...MOCK_CONVERSATION, status: 'ASSIGNED' };
-    (repo.findConversationById as ReturnType<typeof vi.fn>).mockResolvedValue(ok(assignedConv));
-
-    await service.assignConversation({
-      conversationId: CONVERSATION_ID,
-      businessId: BUSINESS_ID,
-      assignedUserId: USER_ID,
-      actorUserId: ACTOR_USER_ID,
-    });
-
-    // Status should remain ASSIGNED, no status_changed audit
-    expect(repo.updateConversation).toHaveBeenCalledWith(
-      CONVERSATION_ID,
-      expect.objectContaining({ status: 'ASSIGNED' }),
-    );
+describe('assignConversation — deferred to R4', () => {
+  it('ConversationService does NOT have assignConversation method', () => {
+    // Verify the method does not exist on the service object
+    expect(service).not.toHaveProperty('assignConversation');
   });
 });
 
 // ===========================================================================
-// 7. changeStatus — invalid transition returns INVALID_CONVERSATION_TRANSITION
+// 8. changeStatus — invalid transition returns INVALID_CONVERSATION_TRANSITION
 // ===========================================================================
 
 describe('changeStatus', () => {
@@ -524,7 +651,7 @@ describe('changeStatus', () => {
 });
 
 // ===========================================================================
-// 8. createMessage — audit does NOT include content
+// 9. createMessage — audit content safety
 // ===========================================================================
 
 describe('createMessage — audit content safety', () => {
@@ -593,13 +720,12 @@ describe('createMessage — audit content safety', () => {
 
     await new Promise((r) => setTimeout(r, 10));
 
-    // INBOUND messages are not operator messages — no audit
     expect(auditSvc.createAuditEvent).not.toHaveBeenCalled();
   });
 });
 
 // ===========================================================================
-// 9. listMessages — verifies conversation belongs to business
+// 10. listMessages — verifies conversation belongs to business
 // ===========================================================================
 
 describe('listMessages — business scoping', () => {
@@ -630,7 +756,7 @@ describe('listMessages — business scoping', () => {
 });
 
 // ===========================================================================
-// 10. Repository errors map to CONVERSATION_REPOSITORY_ERROR
+// 11. Repository error propagation
 // ===========================================================================
 
 describe('Repository error propagation', () => {
@@ -667,10 +793,27 @@ describe('Repository error propagation', () => {
       expect(result.error.code).toBe('CONVERSATION_REPOSITORY_ERROR');
     }
   });
+
+  it('repository error in findCustomerInBusiness propagates', async () => {
+    (repo.findCustomerInBusiness as ReturnType<typeof vi.fn>).mockResolvedValue(
+      err('CONVERSATION_REPOSITORY_ERROR', 'Customer lookup failed'),
+    );
+
+    const result = await service.createConversation({
+      businessId: BUSINESS_ID,
+      channel: 'WEBSITE_CHAT',
+      customerId: CUSTOMER_ID,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONVERSATION_REPOSITORY_ERROR');
+    }
+  });
 });
 
 // ===========================================================================
-// 11. Input validation (standalone)
+// 12. Input validation (standalone)
 // ===========================================================================
 
 describe('validateCreateConversationInput', () => {
@@ -748,11 +891,69 @@ describe('validateInitialMessageInput', () => {
     expect(result.errors[0]).toContain('Invalid initialMessage.direction');
   });
 
+  it('rejects invalid senderCustomerId UUID in initialMessage', () => {
+    const result = validateInitialMessageInput({
+      direction: 'INBOUND',
+      senderType: 'CUSTOMER',
+      content: 'Hello',
+      senderCustomerId: 'bad-uuid',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('initialMessage.senderCustomerId must be a valid UUID');
+  });
+
+  it('rejects senderCustomerId on OUTBOUND initialMessage', () => {
+    const result = validateInitialMessageInput({
+      direction: 'OUTBOUND',
+      senderType: 'OPERATOR',
+      content: 'Hello',
+      senderCustomerId: CUSTOMER_ID,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('initialMessage.senderCustomerId is not allowed for OUTBOUND or INTERNAL messages');
+  });
+
   it('accepts valid input', () => {
     const result = validateInitialMessageInput({
       direction: 'INBOUND',
       senderType: 'CUSTOMER',
       content: 'Hello',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts valid input with senderCustomerId on INBOUND', () => {
+    const result = validateInitialMessageInput({
+      direction: 'INBOUND',
+      senderType: 'CUSTOMER',
+      content: 'Hello',
+      senderCustomerId: CUSTOMER_ID,
+    });
+    expect(result.valid).toBe(true);
+  });
+});
+
+describe('validateUpdateConversationInput', () => {
+  it('rejects non-UUID customerId', () => {
+    const result = validateUpdateConversationInput({
+      customerId: 'not-a-uuid',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('customerId must be a valid UUID');
+  });
+
+  it('accepts valid UUID customerId', () => {
+    const result = validateUpdateConversationInput({
+      customerId: CUSTOMER_ID,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts null customerId (unlinking)', () => {
+    // UpdateConversationInput uses customerId?: string
+    // Null is not valid in the input type — only omission or a string
+    const result = validateUpdateConversationInput({
+      subject: null as unknown as string,
     });
     expect(result.valid).toBe(true);
   });

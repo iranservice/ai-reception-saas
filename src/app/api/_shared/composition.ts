@@ -125,8 +125,19 @@ export function createApiDependencies(
   const crmRepository = createCrmRepository(
     toCrmRepositoryDb(prisma),
   );
+
+  // Customer lookup for tenant-safe cross-domain verification
+  const customerLookup = async (customerId: string) => {
+    const record = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!record) return null;
+    return { id: record.id, businessId: record.businessId };
+  };
+
   const conversationRepository = createConversationRepository(
     toConversationRepositoryDb(prisma),
+    customerLookup,
   );
 
   // Wire services

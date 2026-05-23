@@ -225,6 +225,15 @@ export interface ConversationRepository {
   listMessages(
     input: ListMessagesRepoInput,
   ): Promise<ActionResult<PaginatedMessages>>;
+
+  /**
+   * Checks whether a customer belongs to a specific business.
+   * Returns the customer's id + businessId or null if not found.
+   */
+  findCustomerInBusiness(
+    customerId: string,
+    businessId: string,
+  ): Promise<ActionResult<{ id: string; businessId: string } | null>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -293,9 +302,18 @@ export function mapMessageRecord(record: MessageRecord): MessageIdentity {
 const REPO_ERROR_CODE = 'CONVERSATION_REPOSITORY_ERROR';
 const REPO_ERROR_MSG = 'Conversation repository operation failed';
 
+/**
+ * Minimal customer lookup function for tenant-safe customer verification.
+ * Injected separately to avoid type conflicts between domain repositories.
+ */
+export type CustomerLookup = (
+  customerId: string,
+) => Promise<{ id: string; businessId: string } | null>;
+
 /** Creates a Conversations repository backed by the given DB client */
 export function createConversationRepository(
   db: ConversationRepositoryDb,
+  customerLookup: CustomerLookup,
 ): ConversationRepository {
   return {
     async createConversation(input) {
@@ -447,6 +465,18 @@ export function createConversationRepository(
           data: data.map(mapMessageRecord),
           nextCursor,
         });
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async findCustomerInBusiness(customerId, businessId) {
+      try {
+        const record = await customerLookup(customerId);
+        if (!record || record.businessId !== businessId) {
+          return ok(null);
+        }
+        return ok({ id: record.id, businessId: record.businessId });
       } catch {
         return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
       }

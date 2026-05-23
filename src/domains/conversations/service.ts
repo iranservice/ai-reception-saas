@@ -53,13 +53,10 @@ export interface UpdateConversationServiceInput {
   readonly actorUserId?: string;
 }
 
-/** Input for assigning a conversation */
-export interface AssignConversationServiceInput {
-  readonly conversationId: string;
-  readonly businessId: string;
-  readonly assignedUserId: string;
-  readonly actorUserId: string;
-}
+// NOTE: AssignConversationServiceInput deferred to R4.
+// The schema retains assignedUserId, but assignment operation requires
+// membership verification that is outside R2 scope.
+// See: implementation.ts for TODO.
 
 /** Input for changing conversation status */
 export interface ChangeStatusServiceInput {
@@ -118,7 +115,7 @@ export const CONVERSATION_ERROR_CODES = [
   'INVALID_CONVERSATION_INPUT',
   'INVALID_MESSAGE_INPUT',
   'INVALID_CONVERSATION_TRANSITION',
-  'INVALID_ASSIGNMENT',
+  'CUSTOMER_NOT_IN_BUSINESS',
   'CUSTOMER_ALREADY_LINKED',
   'CONVERSATION_REPOSITORY_ERROR',
 ] as const;
@@ -149,9 +146,7 @@ export interface ConversationService {
     input: UpdateConversationServiceInput,
   ): Promise<ActionResult<ConversationWithSummary>>;
 
-  assignConversation(
-    input: AssignConversationServiceInput,
-  ): Promise<ActionResult<ConversationIdentity>>;
+  // NOTE: assignConversation deferred to R4 (requires membership verification).
 
   changeStatus(
     input: ChangeStatusServiceInput,

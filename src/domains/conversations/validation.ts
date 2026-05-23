@@ -174,10 +174,13 @@ export function validateUpdateConversationInput(
 
   if (
     input.customerId !== undefined &&
-    input.customerId !== null &&
-    typeof input.customerId !== 'string'
+    input.customerId !== null
   ) {
-    errors.push('customerId must be a string or null');
+    if (typeof input.customerId !== 'string') {
+      errors.push('customerId must be a string or null');
+    } else if (!isValidUuid(input.customerId)) {
+      errors.push('customerId must be a valid UUID');
+    }
   }
 
   if (
@@ -294,6 +297,20 @@ export function validateInitialMessageInput(
     errors.push(
       `Invalid initialMessage.senderType: ${input.senderType}. Must be one of: ${MESSAGE_SENDER_TYPE_VALUES.join(', ')}`,
     );
+  }
+
+  // Validate senderCustomerId format + direction rules (same as createMessage)
+  if (input.senderCustomerId !== undefined && input.senderCustomerId !== null) {
+    if (typeof input.senderCustomerId !== 'string' || !isValidUuid(input.senderCustomerId)) {
+      errors.push('initialMessage.senderCustomerId must be a valid UUID');
+    }
+    // senderCustomerId is semantically for INBOUND messages only.
+    if (
+      input.direction &&
+      (input.direction === 'OUTBOUND' || input.direction === 'INTERNAL')
+    ) {
+      errors.push('initialMessage.senderCustomerId is not allowed for OUTBOUND or INTERNAL messages');
+    }
   }
 
   return errors.length === 0 ? success() : failure(...errors);
