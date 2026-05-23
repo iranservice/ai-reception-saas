@@ -25,12 +25,17 @@ import {
   createCrmRepository,
   type CrmRepositoryDb,
 } from '@/domains/crm/repository';
+import {
+  createConversationRepository,
+  type ConversationRepositoryDb,
+} from '@/domains/conversations/repository';
 
 import { createIdentityService } from '@/domains/identity/implementation';
 import { createTenancyService } from '@/domains/tenancy/implementation';
 import { createAuthzService } from '@/domains/authz/implementation';
 import { createAuditService } from '@/domains/audit/implementation';
 import { createCrmService } from '@/domains/crm/implementation';
+import { createConversationService } from '@/domains/conversations/implementation';
 
 import type {
   ApiDependencies,
@@ -81,6 +86,16 @@ function toCrmRepositoryDb(
   };
 }
 
+/** Extracts only the delegates required by ConversationRepositoryDb */
+function toConversationRepositoryDb(
+  prisma: PrismaCompatibleClient,
+): ConversationRepositoryDb {
+  return {
+    conversation: prisma.conversation,
+    message: prisma.message,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -111,6 +126,20 @@ export function createApiDependencies(
     toCrmRepositoryDb(prisma),
   );
 
+  // Customer lookup for tenant-safe cross-domain verification
+  const customerLookup = async (customerId: string) => {
+    const record = await prisma.customer.findUnique({
+      where: { id: customerId },
+    });
+    if (!record) return null;
+    return { id: record.id, businessId: record.businessId };
+  };
+
+  const conversationRepository = createConversationRepository(
+    toConversationRepositoryDb(prisma),
+    customerLookup,
+  );
+
   // Wire services
   const identityService = createIdentityService({
     repository: identityRepository,
@@ -125,6 +154,10 @@ export function createApiDependencies(
   const crmService = createCrmService({
     repository: crmRepository,
   });
+  const conversationService = createConversationService({
+    repository: conversationRepository,
+    audit: auditService,
+  });
 
   return {
     repositories: {
@@ -132,6 +165,7 @@ export function createApiDependencies(
       tenancy: tenancyRepository,
       audit: auditRepository,
       crm: crmRepository,
+      conversations: conversationRepository,
     },
     services: {
       identity: identityService,
@@ -139,6 +173,7 @@ export function createApiDependencies(
       authz: authzService,
       audit: auditService,
       crm: crmService,
+      conversations: conversationService,
     },
   };
 }

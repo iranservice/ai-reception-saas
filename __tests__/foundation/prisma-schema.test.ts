@@ -138,8 +138,6 @@ describe('Prisma Schema — Forbidden Models', () => {
   });
 
   it.each([
-    'Conversation',
-    'Message',
     'Channel',
     'Billing',
     'Analytics',
@@ -459,5 +457,271 @@ describe('Prisma Schema — CRM Domain (R1)', () => {
     expect(model).not.toBeNull();
     expect(model![1]).toContain('customers');
     expect(model![1]).toContain('Customer[]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Conversations + Message Domain tests (R2)
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — Conversations Domain (R2)', () => {
+  // Enums
+  it('defines ConversationStatus enum with all MVP values', () => {
+    expect(enumExists('ConversationStatus')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'NEW')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'OPEN')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'ASSIGNED')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'WAITING_CUSTOMER')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'WAITING_OPERATOR')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'ESCALATED')).toBe(true);
+    expect(enumHasValue('ConversationStatus', 'RESOLVED')).toBe(true);
+  });
+
+  it('defines MessageDirection enum', () => {
+    expect(enumExists('MessageDirection')).toBe(true);
+    expect(enumHasValue('MessageDirection', 'INBOUND')).toBe(true);
+    expect(enumHasValue('MessageDirection', 'OUTBOUND')).toBe(true);
+    expect(enumHasValue('MessageDirection', 'SYSTEM')).toBe(true);
+    expect(enumHasValue('MessageDirection', 'INTERNAL')).toBe(true);
+  });
+
+  it('defines MessageSenderType enum', () => {
+    expect(enumExists('MessageSenderType')).toBe(true);
+    expect(enumHasValue('MessageSenderType', 'CUSTOMER')).toBe(true);
+    expect(enumHasValue('MessageSenderType', 'OPERATOR')).toBe(true);
+    expect(enumHasValue('MessageSenderType', 'SYSTEM')).toBe(true);
+    expect(enumHasValue('MessageSenderType', 'AI_RECEPTIONIST')).toBe(true);
+  });
+
+  it('defines ChannelType enum', () => {
+    expect(enumExists('ChannelType')).toBe(true);
+    expect(enumHasValue('ChannelType', 'INTERNAL')).toBe(true);
+    expect(enumHasValue('ChannelType', 'WEBSITE_CHAT')).toBe(true);
+  });
+
+  it('defines AiClassificationStatus enum', () => {
+    expect(enumExists('AiClassificationStatus')).toBe(true);
+    expect(enumHasValue('AiClassificationStatus', 'NOT_REQUESTED')).toBe(true);
+    expect(enumHasValue('AiClassificationStatus', 'PENDING')).toBe(true);
+    expect(enumHasValue('AiClassificationStatus', 'READY')).toBe(true);
+    expect(enumHasValue('AiClassificationStatus', 'FAILED')).toBe(true);
+  });
+
+  it('defines AiDraftStatus enum', () => {
+    expect(enumExists('AiDraftStatus')).toBe(true);
+    expect(enumHasValue('AiDraftStatus', 'NOT_REQUESTED')).toBe(true);
+    expect(enumHasValue('AiDraftStatus', 'PENDING')).toBe(true);
+    expect(enumHasValue('AiDraftStatus', 'READY')).toBe(true);
+    expect(enumHasValue('AiDraftStatus', 'APPROVED')).toBe(true);
+    expect(enumHasValue('AiDraftStatus', 'REJECTED')).toBe(true);
+    expect(enumHasValue('AiDraftStatus', 'FAILED')).toBe(true);
+  });
+
+  // Models
+  it('defines Conversation model', () => {
+    expect(modelExists('Conversation')).toBe(true);
+  });
+
+  it('defines Message model', () => {
+    expect(modelExists('Message')).toBe(true);
+  });
+
+  // Conversation required fields
+  it('Conversation has required fields', () => {
+    const model = schema.match(/model\s+Conversation\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    const body = model![1];
+    expect(body).toContain('business_id');
+    expect(body).toContain('customer_id');
+    expect(body).toContain('channel');
+    expect(body).toContain('status');
+    expect(body).toContain('assigned_user_id');
+    expect(body).toContain('ai_classification_status');
+    expect(body).toContain('ai_draft_status');
+    expect(body).toContain('channel_metadata');
+    expect(body).toContain('closed_at');
+    expect(body).toContain('created_at');
+    expect(body).toContain('updated_at');
+  });
+
+  // Conversation table mapping
+  it('Conversation maps to conversations table', () => {
+    const model = schema.match(/model\s+Conversation\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('@@map("conversations")');
+  });
+
+  // Conversation indexes
+  it('Conversation has business scoping indexes', () => {
+    const model = schema.match(/model\s+Conversation\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('@@index([businessId, status])');
+    expect(model![1]).toContain('@@index([businessId, createdAt])');
+    expect(model![1]).toContain('@@index([businessId, assignedUserId])');
+    expect(model![1]).toContain('@@index([customerId])');
+    expect(model![1]).toContain('@@index([businessId, channel])');
+  });
+
+  // Conversation composite unique for tenant-safe FK from messages
+  it('Conversation has @@unique([id, businessId]) for composite FK', () => {
+    const model = schema.match(/model\s+Conversation\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('@@unique([id, businessId])');
+  });
+
+  // Message required fields
+  it('Message has required fields', () => {
+    const model = schema.match(/model\s+Message\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    const body = model![1];
+    expect(body).toContain('conversation_id');
+    expect(body).toContain('business_id');
+    expect(body).toContain('direction');
+    expect(body).toContain('sender_type');
+    expect(body).toContain('sender_user_id');
+    expect(body).toContain('content');
+    expect(body).toContain('content_type');
+    expect(body).toContain('created_at');
+  });
+
+  // Message has NO updatedAt (immutable)
+  it('Message does NOT have updatedAt (immutable by design)', () => {
+    const model = schema.match(/model\s+Message\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).not.toContain('updatedAt');
+    expect(model![1]).not.toContain('updated_at');
+  });
+
+  // Message table mapping
+  it('Message maps to messages table', () => {
+    const model = schema.match(/model\s+Message\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('@@map("messages")');
+  });
+
+  // Message indexes
+  it('Message has performance indexes', () => {
+    const model = schema.match(/model\s+Message\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('@@index([conversationId, createdAt])');
+    expect(model![1]).toContain('@@index([businessId, createdAt])');
+    expect(model![1]).toContain('@@index([senderUserId])');
+    expect(model![1]).toContain('@@index([senderCustomerId])');
+  });
+
+  // Message composite conversation relation enforces tenant consistency
+  it('Message.conversation uses composite FK [conversationId, businessId]', () => {
+    const model = schema.match(/model\s+Message\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    const body = model![1];
+    expect(body).toContain('fields: [conversationId, businessId]');
+    expect(body).toContain('references: [id, businessId]');
+  });
+
+  // senderCustomerId UUID + FK
+  it('Message.senderCustomerId is UUID with Customer relation', () => {
+    const model = schema.match(/model\s+Message\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    const body = model![1];
+    expect(body).toContain('sender_customer_id');
+    expect(body).toContain('@db.Uuid');
+    expect(body).toContain('MessageSenderCustomer');
+    expect(body).toContain('onDelete: SetNull');
+  });
+
+  // Relations
+  it('Business has conversations relation', () => {
+    const model = schema.match(/model\s+Business\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('Conversation[]');
+  });
+
+  it('Customer has conversations relation', () => {
+    const model = schema.match(/model\s+Customer\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('conversations');
+  });
+
+  it('Customer has sentMessages relation for MessageSenderCustomer', () => {
+    const model = schema.match(/model\s+Customer\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    expect(model![1]).toContain('sentMessages');
+    expect(model![1]).toContain('MessageSenderCustomer');
+  });
+
+  // Forbidden concepts in Conversation/Message
+  it('Conversation does NOT contain forbidden concepts', () => {
+    const model = schema.match(/model\s+Conversation\s*\{([\s\S]+?)\}/);
+    expect(model).not.toBeNull();
+    const body = model![1];
+    expect(body).not.toContain('serviceCategory');
+    expect(body).not.toContain('mandoub');
+    expect(body).not.toContain('order');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RLS in migration SQL tests
+// ---------------------------------------------------------------------------
+
+describe('Prisma Schema — R2 Migration RLS', () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    '../../prisma/migrations/20260523124455_add_conversation_message_foundation/migration.sql',
+  );
+  const migrationSql = fs.readFileSync(migrationPath, 'utf-8');
+
+  it('migration enables RLS on conversations table', () => {
+    expect(migrationSql).toContain(
+      'ALTER TABLE "conversations" ENABLE ROW LEVEL SECURITY',
+    );
+  });
+
+  it('migration enables RLS on messages table', () => {
+    expect(migrationSql).toContain(
+      'ALTER TABLE "messages" ENABLE ROW LEVEL SECURITY',
+    );
+  });
+
+  it('migration creates sender_customer_id as UUID not TEXT', () => {
+    expect(migrationSql).toContain('"sender_customer_id" UUID');
+    expect(migrationSql).not.toMatch(/"sender_customer_id"\s+TEXT/);
+  });
+
+  it('migration creates FK for sender_customer_id to customers', () => {
+    expect(migrationSql).toContain(
+      'messages_sender_customer_id_fkey',
+    );
+  });
+
+  it('migration creates index on sender_customer_id', () => {
+    expect(migrationSql).toContain(
+      'messages_sender_customer_id_idx',
+    );
+  });
+
+  // Composite unique + FK for message tenant consistency
+  it('migration creates composite unique constraint on conversations(id, business_id)', () => {
+    expect(migrationSql).toContain(
+      'conversations_id_business_id_key',
+    );
+    expect(migrationSql).toMatch(
+      /UNIQUE\s*\("id",\s*"business_id"\)/,
+    );
+  });
+
+  it('migration creates composite FK for messages(conversation_id, business_id)', () => {
+    expect(migrationSql).toContain(
+      'messages_conversation_id_business_id_fkey',
+    );
+    expect(migrationSql).toMatch(
+      /FOREIGN KEY \("conversation_id", "business_id"\)\s+REFERENCES "conversations"\("id", "business_id"\)/,
+    );
+  });
+
+  it('migration does NOT have old simple conversation_id FK', () => {
+    expect(migrationSql).not.toContain(
+      'messages_conversation_id_fkey',
+    );
   });
 });
