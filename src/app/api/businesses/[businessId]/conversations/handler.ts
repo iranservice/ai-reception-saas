@@ -29,19 +29,14 @@ import { apiError } from '@/app/api/_shared/responses';
 import type { ConversationService } from '@/domains/conversations/service';
 import type { AuthzService } from '@/domains/authz/service';
 import type { AuthzPermission } from '@/domains/authz/types';
-import type { AuditService } from '@/domains/audit/service';
-import type { TenantRequestContext as AuditContext } from '@/app/api/_shared/request-context';
 import {
   CONVERSATION_STATUS_VALUES,
-  MESSAGE_DIRECTION_VALUES,
   CHANNEL_TYPE_VALUES,
-  MESSAGE_SENDER_TYPE_VALUES,
   type ConversationStatusValue,
   type MessageDirectionValue,
   type ChannelTypeValue,
   type MessageSenderTypeValue,
 } from '@/domains/conversations/types';
-import type { JsonValue } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
 // Local schemas
@@ -60,25 +55,22 @@ const conversationStatusSchema = z.enum(
   CONVERSATION_STATUS_VALUES as unknown as [string, ...string[]],
 );
 
-const messageDirectionSchema = z.enum(
-  MESSAGE_DIRECTION_VALUES as unknown as [string, ...string[]],
-);
+/** API-allowed message directions (SYSTEM is internal-only) */
+const API_MESSAGE_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'INTERNAL'] as const;
+const apiMessageDirectionSchema = z.enum(API_MESSAGE_DIRECTIONS);
 
 const channelTypeSchema = z.enum(
   CHANNEL_TYPE_VALUES as unknown as [string, ...string[]],
 );
 
-const senderTypeSchema = z.enum(
-  MESSAGE_SENDER_TYPE_VALUES as unknown as [string, ...string[]],
-);
+/** UUID schema for query param validation */
+const uuidSchema = z.string().uuid();
 
 // Request body schemas
 
 const initialMessageBodySchema = z.object({
   content: z.string().min(1).max(50000),
-  direction: messageDirectionSchema,
-  senderType: senderTypeSchema,
-  senderUserId: z.string().uuid().optional(),
+  direction: apiMessageDirectionSchema,
   senderCustomerId: z.string().uuid().optional(),
   contentType: z.string().max(200).optional(),
 }).strict();
@@ -110,7 +102,7 @@ const changeStatusBodySchema = z.object({
 
 const createMessageBodySchema = z.object({
   content: z.string().min(1).max(50000),
-  direction: messageDirectionSchema,
+  direction: apiMessageDirectionSchema,
   senderCustomerId: z.string().uuid().optional(),
   contentType: z.string().max(200).optional(),
 }).strict();
@@ -132,7 +124,6 @@ export interface ConversationHandlerDeps {
     | 'listMessages'
   >;
   readonly authzService: Pick<AuthzService, 'requirePermission'>;
-  readonly auditService: Pick<AuditService, 'createAuditEvent'>;
   readonly resolveTenantContext?: (
     request: Request,
     scope?: TenantRequestScope,
@@ -176,38 +167,12 @@ async function requireConversationPermission(
   return null;
 }
 
-/**
- * Fire-and-forget audit emitter.
- * Logs audit events after successful mutations.
- * Never fails the API response — errors are silently caught.
- * Metadata is PII-safe: no message content, no customer PII.
- */
-function emitAudit(
-  deps: ConversationHandlerDeps,
-  context: AuditContext,
-  action: string,
-  targetType: string,
-  targetId: string,
-  metadata?: JsonValue,
-): void {
-  deps.auditService
-    .createAuditEvent({
-      businessId: context.businessId,
-      actorType: 'USER',
-      actorUserId: context.userId,
-      action,
-      targetType,
-      targetId,
-      result: 'SUCCESS',
-      metadata: metadata ?? null,
-    })
-    .catch(() => {
-      // Fire-and-forget: audit write failure must not break the API response
-    });
-}
+// Audit is handled by the domain service — not duplicated at handler level.
+// See: src/domains/conversations/implementation.ts
 
 /**
- * Derives senderType from message direction.
+ * Derives senderType from API-allowed message direction.
+ * SYSTEM direction is not allowed at the API boundary.
  */
 function deriveSenderType(direction: MessageDirectionValue): MessageSenderTypeValue {
   switch (direction) {
@@ -216,7 +181,7 @@ function deriveSenderType(direction: MessageDirectionValue): MessageSenderTypeVa
     case 'OUTBOUND':
     case 'INTERNAL':
       return 'OPERATOR';
-    case 'SYSTEM':
+    default:
       return 'SYSTEM';
   }
 }
@@ -283,10 +248,42 @@ export function createListConversationsHandler(
       channel = channelParsed.data as ChannelTypeValue;
     }
 
-    const assignedUserId = getSearchParam(request, 'assignedUserId') ?? undefined;
-    const customerId = getSearchParam(request, 'customerId') ?? undefined;
-    const limit = parseIntegerQueryParam(getSearchParam(request, 'limit'));
-    const cursor = getSearchParam(request, 'cursor') ?? undefined;
+    const assignedUserIdParam = getSearchParam(request, 'assignedUserId');
+    let assignedUserId: string | undefined;
+    if (assignedUserIdParam !== null) {
+      if (!uuidSchema.safeParse(assignedUserIdParam).success) {
+        return apiError('INVALID_CONVERSATION_INPUT', 'Invalid assignedUserId filter', 400);
+      }
+      assignedUserId = assignedUserIdParam;
+    }
+
+    const customerIdParam = getSearchParam(request, 'customerId');
+    let customerId: string | undefined;
+    if (customerIdParam !== null) {
+      if (!uuidSchema.safeParse(customerIdParam).success) {
+        return apiError('INVALID_CONVERSATION_INPUT', 'Invalid customerId filter', 400);
+      }
+      customerId = customerIdParam;
+    }
+
+    const limitParam = getSearchParam(request, 'limit');
+    let limit: number | undefined;
+    if (limitParam !== null) {
+      const parsed = parseIntegerQueryParam(limitParam);
+      if (parsed === undefined || parsed < 1) {
+        return apiError('INVALID_CONVERSATION_INPUT', 'Invalid limit parameter', 400);
+      }
+      limit = Math.min(parsed, 100);
+    }
+
+    const cursorParam = getSearchParam(request, 'cursor');
+    let cursor: string | undefined;
+    if (cursorParam !== null) {
+      if (!uuidSchema.safeParse(cursorParam).success) {
+        return apiError('INVALID_CONVERSATION_INPUT', 'Invalid cursor parameter', 400);
+      }
+      cursor = cursorParam;
+    }
 
     const result = await deps.conversationService.listConversations({
       businessId,
@@ -294,7 +291,7 @@ export function createListConversationsHandler(
       channel,
       assignedUserId,
       customerId,
-      limit: limit ? Math.min(Math.max(limit, 1), 100) : undefined,
+      limit,
       cursor,
     });
 
@@ -347,6 +344,38 @@ export function createPostConversationHandler(
     );
     if (!bodyResult.ok) return bodyResult.response;
 
+    // Derive initialMessage sender fields at handler level to prevent impersonation
+    let initialMessage: Parameters<typeof deps.conversationService.createConversation>[0]['initialMessage'];
+    if (bodyResult.data.initialMessage) {
+      const imDir = bodyResult.data.initialMessage.direction as MessageDirectionValue;
+      const imSenderType = deriveSenderType(imDir);
+      const imSenderUserId =
+        imDir === 'OUTBOUND' || imDir === 'INTERNAL'
+          ? contextResult.context.userId
+          : undefined;
+
+      // Reject senderCustomerId for OUTBOUND/INTERNAL
+      if (
+        bodyResult.data.initialMessage.senderCustomerId &&
+        (imDir === 'OUTBOUND' || imDir === 'INTERNAL')
+      ) {
+        return apiError(
+          'INVALID_CONVERSATION_INPUT',
+          'senderCustomerId is not allowed for OUTBOUND or INTERNAL initial messages',
+          400,
+        );
+      }
+
+      initialMessage = {
+        content: bodyResult.data.initialMessage.content,
+        direction: imDir,
+        senderType: imSenderType,
+        senderUserId: imSenderUserId,
+        senderCustomerId: bodyResult.data.initialMessage.senderCustomerId,
+        contentType: bodyResult.data.initialMessage.contentType,
+      };
+    }
+
     const result = await deps.conversationService.createConversation({
       businessId,
       customerId: bodyResult.data.customerId,
@@ -354,27 +383,11 @@ export function createPostConversationHandler(
       subject: bodyResult.data.subject,
       channelMetadata: bodyResult.data.channelMetadata,
       metadata: bodyResult.data.metadata,
-      initialMessage: bodyResult.data.initialMessage
-        ? {
-            content: bodyResult.data.initialMessage.content,
-            direction: bodyResult.data.initialMessage.direction as MessageDirectionValue,
-            senderType: bodyResult.data.initialMessage.senderType as MessageSenderTypeValue,
-            senderUserId: bodyResult.data.initialMessage.senderUserId,
-            senderCustomerId: bodyResult.data.initialMessage.senderCustomerId,
-            contentType: bodyResult.data.initialMessage.contentType,
-          }
-        : undefined,
+      initialMessage,
       actorUserId: contextResult.context.userId,
     });
 
-    if (result.ok) {
-      emitAudit(deps, contextResult.context, 'conversation.create', 'conversation', result.data.id, {
-        businessId,
-        conversationId: result.data.id,
-        channel: result.data.channel,
-        hasInitialMessage: !!bodyResult.data.initialMessage,
-      });
-    }
+    // Audit is emitted by the domain service — not duplicated here.
 
     return actionResultToResponseWithStatus(result, 201);
   };
@@ -489,16 +502,7 @@ export function createPatchConversationHandler(
       actorUserId: contextResult.context.userId,
     });
 
-    if (result.ok) {
-      const updatedFields = Object.keys(updateData).filter(
-        (k) => (updateData as Record<string, unknown>)[k] !== undefined,
-      );
-      emitAudit(deps, contextResult.context, 'conversation.update', 'conversation', conversationId, {
-        businessId,
-        conversationId,
-        updatedFields,
-      });
-    }
+    // Audit is emitted by the domain service — not duplicated here.
 
     return actionResultToResponse(result);
   };
@@ -609,21 +613,37 @@ export function createListMessagesHandler(
     const directionParam = getSearchParam(request, 'direction');
     let direction: MessageDirectionValue | undefined;
     if (directionParam !== null) {
-      const directionParsed = messageDirectionSchema.safeParse(directionParam);
+      const directionParsed = apiMessageDirectionSchema.safeParse(directionParam);
       if (!directionParsed.success) {
         return apiError('INVALID_MESSAGE_INPUT', 'Invalid direction filter', 400);
       }
       direction = directionParsed.data as MessageDirectionValue;
     }
 
-    const limit = parseIntegerQueryParam(getSearchParam(request, 'limit'));
-    const cursor = getSearchParam(request, 'cursor') ?? undefined;
+    const limitParam = getSearchParam(request, 'limit');
+    let limit: number | undefined;
+    if (limitParam !== null) {
+      const parsed = parseIntegerQueryParam(limitParam);
+      if (parsed === undefined || parsed < 1) {
+        return apiError('INVALID_MESSAGE_INPUT', 'Invalid limit parameter', 400);
+      }
+      limit = Math.min(parsed, 100);
+    }
+
+    const cursorParam = getSearchParam(request, 'cursor');
+    let cursor: string | undefined;
+    if (cursorParam !== null) {
+      if (!uuidSchema.safeParse(cursorParam).success) {
+        return apiError('INVALID_MESSAGE_INPUT', 'Invalid cursor parameter', 400);
+      }
+      cursor = cursorParam;
+    }
 
     const result = await deps.conversationService.listMessages({
       conversationId,
       businessId,
       direction,
-      limit: limit ? Math.min(Math.max(limit, 1), 100) : undefined,
+      limit,
       cursor,
     });
 
@@ -678,7 +698,6 @@ export function createPostMessageHandler(
     if (!bodyResult.ok) return bodyResult.response;
 
     const direction = bodyResult.data.direction as MessageDirectionValue;
-    const senderType = deriveSenderType(direction);
 
     // Derive senderUserId: for OUTBOUND/INTERNAL, use the authenticated user
     const senderUserId =
@@ -689,11 +708,11 @@ export function createPostMessageHandler(
     // senderCustomerId validation: only allowed for INBOUND
     if (
       bodyResult.data.senderCustomerId &&
-      (direction === 'OUTBOUND' || direction === 'INTERNAL' || direction === 'SYSTEM')
+      (direction === 'OUTBOUND' || direction === 'INTERNAL')
     ) {
       return apiError(
         'INVALID_MESSAGE_INPUT',
-        'senderCustomerId is not allowed for OUTBOUND, INTERNAL, or SYSTEM messages',
+        'senderCustomerId is not allowed for OUTBOUND or INTERNAL messages',
         400,
       );
     }
@@ -708,15 +727,7 @@ export function createPostMessageHandler(
       contentType: bodyResult.data.contentType,
     });
 
-    if (result.ok) {
-      emitAudit(deps, contextResult.context, 'message.create', 'message', result.data.id, {
-        businessId,
-        conversationId,
-        messageId: result.data.id,
-        direction,
-        senderType,
-      });
-    }
+    // Audit is emitted by the domain service — not duplicated here.
 
     return actionResultToResponseWithStatus(result, 201);
   };

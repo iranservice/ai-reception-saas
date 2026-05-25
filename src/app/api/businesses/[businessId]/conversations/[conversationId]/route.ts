@@ -36,7 +36,6 @@ export async function GET(
     const handler = createGetConversationByIdHandler({
       conversationService: deps.services.conversations,
       authzService: deps.services.authz,
-      auditService: deps.services.audit,
     });
     return handler(request, params);
   });
@@ -55,7 +54,6 @@ export async function PATCH(
     const handler = createPatchConversationHandler({
       conversationService: deps.services.conversations,
       authzService: deps.services.authz,
-      auditService: deps.services.audit,
     });
     return handler(request, params);
   });

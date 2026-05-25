@@ -33,7 +33,6 @@ export async function POST(
     const handler = createChangeConversationStatusHandler({
       conversationService: deps.services.conversations,
       authzService: deps.services.authz,
-      auditService: deps.services.audit,
     });
     return handler(request, params);
   });

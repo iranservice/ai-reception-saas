@@ -108,9 +108,6 @@ function makeDeps(overrides?: Partial<ConversationHandlerDeps>): ConversationHan
     authzService: {
       requirePermission: vi.fn().mockResolvedValue(ok({ allowed: true })),
     },
-    auditService: {
-      createAuditEvent: vi.fn().mockResolvedValue(ok({ id: 'audit-1' })),
-    },
     resolveTenantContext: mockResolveTenantContext,
     ...overrides,
   };
@@ -237,6 +234,64 @@ describe('Conversation Handler — LIST_CONVERSATIONS', () => {
     const body = await res.json();
     expect(body.error.code).toBe('INVALID_CONVERSATION_INPUT');
   });
+
+  it('returns 400 for invalid assignedUserId query param', async () => {
+    const deps = makeDeps();
+    const handler = createListConversationsHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations?assignedUserId=not-uuid`),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_CONVERSATION_INPUT');
+  });
+
+  it('returns 400 for invalid customerId query param', async () => {
+    const deps = makeDeps();
+    const handler = createListConversationsHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations?customerId=not-uuid`),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_CONVERSATION_INPUT');
+  });
+
+  it('returns 400 for invalid cursor query param', async () => {
+    const deps = makeDeps();
+    const handler = createListConversationsHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations?cursor=not-uuid`),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_CONVERSATION_INPUT');
+  });
+
+  it('returns 400 for invalid limit query param', async () => {
+    const deps = makeDeps();
+    const handler = createListConversationsHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations?limit=abc`),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_CONVERSATION_INPUT');
+  });
+
+  it('returns 400 for limit=0', async () => {
+    const deps = makeDeps();
+    const handler = createListConversationsHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations?limit=0`),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -278,7 +333,7 @@ describe('Conversation Handler — CREATE_CONVERSATION', () => {
     );
   });
 
-  it('passes initialMessage to service', async () => {
+  it('passes initialMessage with handler-derived senderType to service', async () => {
     const deps = makeDeps();
     const handler = createPostConversationHandler(deps);
     await handler(
@@ -287,7 +342,6 @@ describe('Conversation Handler — CREATE_CONVERSATION', () => {
         initialMessage: {
           content: 'Hello',
           direction: 'OUTBOUND',
-          senderType: 'OPERATOR',
         },
       }),
       { businessId: BUSINESS_ID },
@@ -298,9 +352,109 @@ describe('Conversation Handler — CREATE_CONVERSATION', () => {
           content: 'Hello',
           direction: 'OUTBOUND',
           senderType: 'OPERATOR',
+          senderUserId: USER_ID,
         }),
       }),
     );
+  });
+
+  it('rejects initialMessage with senderType (impersonation)', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    const res = await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        initialMessage: {
+          content: 'Hello',
+          direction: 'OUTBOUND',
+          senderType: 'AI_RECEPTIONIST',
+        },
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects initialMessage with senderUserId (impersonation)', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    const res = await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        initialMessage: {
+          content: 'Hello',
+          direction: 'OUTBOUND',
+          senderUserId: '99999999-9999-4999-8999-999999999999',
+        },
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('derives senderUserId from context for OUTBOUND initialMessage', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        initialMessage: {
+          content: 'Reply',
+          direction: 'OUTBOUND',
+        },
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    const call = vi.mocked(deps.conversationService.createConversation).mock.calls[0][0];
+    expect(call.initialMessage?.senderUserId).toBe(USER_ID);
+    expect(call.initialMessage?.senderType).toBe('OPERATOR');
+  });
+
+  it('allows senderCustomerId for INBOUND initialMessage', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        initialMessage: {
+          content: 'Customer msg',
+          direction: 'INBOUND',
+          senderCustomerId: CUSTOMER_ID,
+        },
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    const call = vi.mocked(deps.conversationService.createConversation).mock.calls[0][0];
+    expect(call.initialMessage?.senderCustomerId).toBe(CUSTOMER_ID);
+    expect(call.initialMessage?.senderType).toBe('CUSTOMER');
+    expect(call.initialMessage?.senderUserId).toBeUndefined();
+  });
+
+  it('rejects senderCustomerId for OUTBOUND initialMessage', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    const res = await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        initialMessage: {
+          content: 'Hello',
+          direction: 'OUTBOUND',
+          senderCustomerId: CUSTOMER_ID,
+        },
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects SYSTEM direction for initialMessage', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    const res = await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        initialMessage: {
+          content: 'System msg',
+          direction: 'SYSTEM',
+        },
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    expect(res.status).toBe(400);
   });
 
   it('returns 400 for invalid body', async () => {
@@ -309,22 +463,6 @@ describe('Conversation Handler — CREATE_CONVERSATION', () => {
     const res = await handler(
       makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
         channel: 'TELEGRAM',
-      }),
-      { businessId: BUSINESS_ID },
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 for invalid initialMessage', async () => {
-    const deps = makeDeps();
-    const handler = createPostConversationHandler(deps);
-    const res = await handler(
-      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
-        initialMessage: {
-          content: '',
-          direction: 'INVALID',
-          senderType: 'OPERATOR',
-        },
       }),
       { businessId: BUSINESS_ID },
     );
@@ -359,6 +497,19 @@ describe('Conversation Handler — CREATE_CONVERSATION', () => {
       { businessId: BUSINESS_ID },
     );
     expect(res.status).toBe(403);
+  });
+
+  it('does NOT call auditService from handler', async () => {
+    const deps = makeDeps();
+    const handler = createPostConversationHandler(deps);
+    await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
+        subject: 'New',
+      }),
+      { businessId: BUSINESS_ID },
+    );
+    // Handler no longer has auditService — domain service is source of truth
+    expect(deps).not.toHaveProperty('auditService');
   });
 });
 
@@ -457,6 +608,18 @@ describe('Conversation Handler — PATCH_CONVERSATION', () => {
       { businessId: BUSINESS_ID, conversationId: CONV_ID },
     );
     expect(res.status).toBe(404);
+  });
+
+  it('does NOT call auditService from handler', async () => {
+    const deps = makeDeps();
+    const handler = createPatchConversationHandler(deps);
+    await handler(
+      makeRequest('PATCH', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}`, {
+        subject: 'Updated',
+      }),
+      { businessId: BUSINESS_ID, conversationId: CONV_ID },
+    );
+    expect(deps).not.toHaveProperty('auditService');
   });
 });
 
@@ -601,6 +764,30 @@ describe('Conversation Handler — LIST_MESSAGES', () => {
     const body = await res.json();
     expect(body.error.code).toBe('INVALID_MESSAGE_INPUT');
   });
+
+  it('returns 400 for invalid cursor on messages', async () => {
+    const deps = makeDeps();
+    const handler = createListMessagesHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}/messages?cursor=not-uuid`),
+      { businessId: BUSINESS_ID, conversationId: CONV_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_MESSAGE_INPUT');
+  });
+
+  it('returns 400 for invalid limit on messages', async () => {
+    const deps = makeDeps();
+    const handler = createListMessagesHandler(deps);
+    const res = await handler(
+      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}/messages?limit=abc`),
+      { businessId: BUSINESS_ID, conversationId: CONV_ID },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_MESSAGE_INPUT');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -708,18 +895,19 @@ describe('Conversation Handler — CREATE_MESSAGE', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects senderCustomerId for SYSTEM', async () => {
+  it('rejects SYSTEM direction at API boundary', async () => {
     const deps = makeDeps();
     const handler = createPostMessageHandler(deps);
     const res = await handler(
       makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}/messages`, {
         content: 'System notification',
         direction: 'SYSTEM',
-        senderCustomerId: CUSTOMER_ID,
       }),
       { businessId: BUSINESS_ID, conversationId: CONV_ID },
     );
     expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('INVALID_MESSAGE_INPUT');
   });
 
   it('returns 400 for missing content', async () => {
@@ -762,6 +950,19 @@ describe('Conversation Handler — CREATE_MESSAGE', () => {
     );
     expect(res.status).toBe(403);
   });
+
+  it('does NOT call auditService from handler', async () => {
+    const deps = makeDeps();
+    const handler = createPostMessageHandler(deps);
+    await handler(
+      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}/messages`, {
+        content: 'Test',
+        direction: 'OUTBOUND',
+      }),
+      { businessId: BUSINESS_ID, conversationId: CONV_ID },
+    );
+    expect(deps).not.toHaveProperty('auditService');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -793,142 +994,13 @@ describe('Conversation Handler — tenant mismatch', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Audit logging
+// No handler-level audit (domain service is source of truth)
 // ---------------------------------------------------------------------------
 
-describe('Conversation Handler — audit logging', () => {
-  it('calls audit on successful conversation create', async () => {
+describe('Conversation Handler — no handler-level audit', () => {
+  it('ConversationHandlerDeps does not include auditService', () => {
     const deps = makeDeps();
-    const handler = createPostConversationHandler(deps);
-    await handler(
-      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
-        subject: 'New',
-      }),
-      { businessId: BUSINESS_ID },
-    );
-    await vi.waitFor(() => {
-      expect(deps.auditService.createAuditEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'conversation.create',
-          targetType: 'conversation',
-          result: 'SUCCESS',
-          businessId: BUSINESS_ID,
-        }),
-      );
-    });
-  });
-
-  it('conversation create audit metadata includes no content', async () => {
-    const deps = makeDeps();
-    const handler = createPostConversationHandler(deps);
-    await handler(
-      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
-        subject: 'Secret Subject',
-        initialMessage: {
-          content: 'Secret message content',
-          direction: 'OUTBOUND',
-          senderType: 'OPERATOR',
-        },
-      }),
-      { businessId: BUSINESS_ID },
-    );
-    await vi.waitFor(() => {
-      expect(deps.auditService.createAuditEvent).toHaveBeenCalled();
-    });
-    const call = vi.mocked(deps.auditService.createAuditEvent).mock.calls[0][0];
-    const meta = call.metadata as Record<string, unknown>;
-    expect(meta).not.toHaveProperty('content');
-    expect(meta).not.toHaveProperty('subject');
-    expect(meta).toHaveProperty('hasInitialMessage', true);
-  });
-
-  it('calls audit on successful conversation update', async () => {
-    const deps = makeDeps();
-    const handler = createPatchConversationHandler(deps);
-    await handler(
-      makeRequest('PATCH', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}`, {
-        subject: 'Updated',
-      }),
-      { businessId: BUSINESS_ID, conversationId: CONV_ID },
-    );
-    await vi.waitFor(() => {
-      expect(deps.auditService.createAuditEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'conversation.update',
-          targetType: 'conversation',
-          targetId: CONV_ID,
-        }),
-      );
-    });
-  });
-
-  it('update audit metadata includes updatedFields but no values', async () => {
-    const deps = makeDeps();
-    const handler = createPatchConversationHandler(deps);
-    await handler(
-      makeRequest('PATCH', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}`, {
-        subject: 'Updated Subject',
-        customerId: CUSTOMER_ID,
-      }),
-      { businessId: BUSINESS_ID, conversationId: CONV_ID },
-    );
-    await vi.waitFor(() => {
-      expect(deps.auditService.createAuditEvent).toHaveBeenCalled();
-    });
-    const call = vi.mocked(deps.auditService.createAuditEvent).mock.calls[0][0];
-    const meta = call.metadata as Record<string, unknown>;
-    expect(meta.updatedFields).toContain('subject');
-    expect(meta.updatedFields).toContain('customerId');
-    expect(meta).not.toHaveProperty('subject');
-  });
-
-  it('calls audit on successful message create with no content', async () => {
-    const deps = makeDeps();
-    const handler = createPostMessageHandler(deps);
-    await handler(
-      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations/${CONV_ID}/messages`, {
-        content: 'Secret message text',
-        direction: 'OUTBOUND',
-      }),
-      { businessId: BUSINESS_ID, conversationId: CONV_ID },
-    );
-    await vi.waitFor(() => {
-      expect(deps.auditService.createAuditEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'message.create',
-          targetType: 'message',
-          result: 'SUCCESS',
-        }),
-      );
-    });
-    const call = vi.mocked(deps.auditService.createAuditEvent).mock.calls[0][0];
-    const meta = call.metadata as Record<string, unknown>;
-    expect(meta).not.toHaveProperty('content');
-    expect(meta.direction).toBe('OUTBOUND');
-    expect(meta.senderType).toBe('OPERATOR');
-  });
-
-  it('does NOT call audit on read operations', async () => {
-    const deps = makeDeps();
-    const handler = createListConversationsHandler(deps);
-    await handler(
-      makeRequest('GET', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`),
-      { businessId: BUSINESS_ID },
-    );
-    expect(deps.auditService.createAuditEvent).not.toHaveBeenCalled();
-  });
-
-  it('audit failure does not break API response', async () => {
-    const deps = makeDeps();
-    vi.mocked(deps.auditService.createAuditEvent).mockRejectedValueOnce(new Error('Audit DB down'));
-    const handler = createPostConversationHandler(deps);
-    const res = await handler(
-      makeRequest('POST', `http://localhost/api/businesses/${BUSINESS_ID}/conversations`, {
-        subject: 'Test',
-      }),
-      { businessId: BUSINESS_ID },
-    );
-    expect(res.status).toBe(201);
+    expect(deps).not.toHaveProperty('auditService');
   });
 });
 

@@ -36,7 +36,6 @@ export async function GET(
     const handler = createListConversationsHandler({
       conversationService: deps.services.conversations,
       authzService: deps.services.authz,
-      auditService: deps.services.audit,
     });
     return handler(request, params);
   });
@@ -55,7 +54,6 @@ export async function POST(
     const handler = createPostConversationHandler({
       conversationService: deps.services.conversations,
       authzService: deps.services.authz,
-      auditService: deps.services.audit,
     });
     return handler(request, params);
   });
