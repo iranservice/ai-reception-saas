@@ -5,7 +5,7 @@
 // ===========================================================================
 
 import type { JsonValue } from '@/lib/types';
-import type { UserDisplayInfo } from '@/domains/tenancy/types';
+import type { UserDisplayInfo } from '@/domains/identity/types';
 
 /** Allowed audit actor type values */
 export const AUDIT_ACTOR_TYPE_VALUES = [

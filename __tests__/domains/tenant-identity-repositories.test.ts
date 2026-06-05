@@ -468,6 +468,30 @@ describe('Audit Repository', () => {
     );
   });
 
+  it('listAuditEvents passes actorUser include to Prisma findMany', async () => {
+    const db = createMockAuditDb();
+    const repo = createAuditRepository(db);
+    await repo.listAuditEvents({});
+    expect(db.auditEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          actorUser: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      }),
+    );
+    // Verify email is NOT selected — guards against PII leakage
+    const callArgs = vi.mocked(db.auditEvent.findMany).mock.calls[0][0];
+    const select = callArgs.include?.actorUser?.select as Record<string, unknown> | undefined;
+    expect(select).toBeDefined();
+    expect(select).not.toHaveProperty('email');
+  });
+
   it('findAuditEventById returns ok(null) when not found', async () => {
     const db = createMockAuditDb();
     vi.mocked(db.auditEvent.findUnique).mockResolvedValueOnce(null);

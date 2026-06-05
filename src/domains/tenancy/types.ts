@@ -4,6 +4,11 @@
 // Domain-level type definitions for businesses and memberships.
 // ===========================================================================
 
+import type { UserDisplayInfo } from '@/domains/identity/types';
+
+// Re-export so existing callers importing UserDisplayInfo from tenancy still work.
+export type { UserDisplayInfo };
+
 /** Allowed business status values */
 export const BUSINESS_STATUS_VALUES = [
   'ACTIVE',
@@ -51,12 +56,6 @@ export interface BusinessIdentity {
   updatedAt: string;
 }
 
-/** Tenant-safe user display info (no email, no PII beyond name) */
-export interface UserDisplayInfo {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-}
 
 /** Domain representation of a business membership */
 export interface BusinessMembershipIdentity {
