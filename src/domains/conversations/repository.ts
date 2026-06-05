@@ -46,7 +46,12 @@ export interface ConversationRecord {
 /** Raw conversation record with aggregated message info */
 export interface ConversationRecordWithSummary extends ConversationRecord {
   _count?: { messages: number };
-  messages?: { createdAt: Date }[];
+  messages?: {
+    createdAt: Date;
+    content: string;
+    direction: MessageDirectionValue;
+    senderType: MessageSenderTypeValue;
+  }[];
 }
 
 /** Raw message record from the database */
@@ -274,6 +279,9 @@ export function mapConversationWithSummary(
     lastMessageAt: lastMessage
       ? lastMessage.createdAt.toISOString()
       : null,
+    lastMessageContent: lastMessage?.content ?? null,
+    lastMessageDirection: lastMessage?.direction ?? null,
+    lastMessageSenderType: lastMessage?.senderType ?? null,
   };
 }
 
