@@ -208,6 +208,9 @@ export function createConversationService(
           ...convResult.data,
           messageCount: input.initialMessage ? 1 : 0,
           lastMessageAt: null,
+          lastMessageContent: null,
+          lastMessageDirection: null,
+          lastMessageSenderType: null,
         },
       };
     },
@@ -306,7 +309,14 @@ export function createConversationService(
       }
       return {
         ok: true as const,
-        data: { ...updateResult.data, messageCount: 0, lastMessageAt: null },
+        data: {
+          ...updateResult.data,
+          messageCount: 0,
+          lastMessageAt: null,
+          lastMessageContent: null,
+          lastMessageDirection: null,
+          lastMessageSenderType: null,
+        },
       };
     },
 

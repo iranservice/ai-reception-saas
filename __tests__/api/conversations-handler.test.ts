@@ -50,6 +50,9 @@ const MOCK_CONVERSATION: ConversationWithSummary = {
   updatedAt: '2026-01-01T00:00:00.000Z',
   messageCount: 0,
   lastMessageAt: null,
+  lastMessageContent: null,
+  lastMessageDirection: null,
+  lastMessageSenderType: null,
 };
 
 const MOCK_MESSAGE: MessageIdentity = {

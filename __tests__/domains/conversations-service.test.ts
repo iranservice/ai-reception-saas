@@ -67,6 +67,9 @@ const MOCK_CONVERSATION: ConversationWithSummary = {
   ...MOCK_CONVERSATION_IDENTITY,
   messageCount: 0,
   lastMessageAt: null,
+  lastMessageContent: null,
+  lastMessageDirection: null,
+  lastMessageSenderType: null,
 };
 
 const MOCK_MESSAGE: MessageIdentity = {

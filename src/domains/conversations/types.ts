@@ -116,6 +116,9 @@ export interface MessageIdentity {
 export interface ConversationWithSummary extends ConversationIdentity {
   messageCount: number;
   lastMessageAt: string | null;
+  lastMessageContent: string | null;
+  lastMessageDirection: MessageDirectionValue | null;
+  lastMessageSenderType: MessageSenderTypeValue | null;
 }
 
 // ---------------------------------------------------------------------------
