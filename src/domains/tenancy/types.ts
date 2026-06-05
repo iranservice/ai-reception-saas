@@ -51,6 +51,13 @@ export interface BusinessIdentity {
   updatedAt: string;
 }
 
+/** Tenant-safe user display info (no email, no PII beyond name) */
+export interface UserDisplayInfo {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 /** Domain representation of a business membership */
 export interface BusinessMembershipIdentity {
   id: string;
@@ -62,6 +69,8 @@ export interface BusinessMembershipIdentity {
   joinedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Resolved user display info (present when loaded via list query) */
+  user?: UserDisplayInfo;
 }
 
 /** Resolved tenant context for the current request */

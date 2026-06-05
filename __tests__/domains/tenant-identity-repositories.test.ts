@@ -334,6 +334,7 @@ describe('Tenancy Repository', () => {
         businessId: MOCK_BUSINESS_RECORD.id,
         status: { not: 'REMOVED' },
       },
+      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
       orderBy: { createdAt: 'desc' },
     });
   });
@@ -404,6 +405,20 @@ describe('Tenancy Mappers', () => {
     };
     const mapped2 = mapBusinessMembershipRecord(withoutJoined);
     expect(mapped2.joinedAt).toBeNull();
+  });
+
+  it('mapBusinessMembershipRecord includes user display info when present', () => {
+    const withUser: BusinessMembershipRecord = {
+      ...MOCK_MEMBERSHIP_RECORD,
+      user: { id: MOCK_USER_RECORD.id, name: 'Test User', avatarUrl: null },
+    };
+    const mapped = mapBusinessMembershipRecord(withUser);
+    expect(mapped.user).toEqual({ id: MOCK_USER_RECORD.id, name: 'Test User', avatarUrl: null });
+  });
+
+  it('mapBusinessMembershipRecord omits user when not present', () => {
+    const mapped = mapBusinessMembershipRecord(MOCK_MEMBERSHIP_RECORD);
+    expect(mapped.user).toBeUndefined();
   });
 });
 
@@ -489,6 +504,29 @@ describe('Audit Mappers', () => {
     const mapped = mapAuditEventRecord(MOCK_AUDIT_RECORD);
     expect(mapped.createdAt).toBe(NOW.toISOString());
     expect(mapped.metadata).toEqual({ detail: 'test' });
+  });
+
+  it('mapAuditEventRecord includes actorUser display info when present', () => {
+    const withActorUser: AuditEventRecord = {
+      ...MOCK_AUDIT_RECORD,
+      actorUser: { id: MOCK_USER_RECORD.id, name: 'Test User', avatarUrl: null },
+    };
+    const mapped = mapAuditEventRecord(withActorUser);
+    expect(mapped.actorUser).toEqual({ id: MOCK_USER_RECORD.id, name: 'Test User', avatarUrl: null });
+  });
+
+  it('mapAuditEventRecord omits actorUser when not present', () => {
+    const mapped = mapAuditEventRecord(MOCK_AUDIT_RECORD);
+    expect(mapped.actorUser).toBeUndefined();
+  });
+
+  it('mapAuditEventRecord omits actorUser when null', () => {
+    const withNull: AuditEventRecord = {
+      ...MOCK_AUDIT_RECORD,
+      actorUser: null,
+    };
+    const mapped = mapAuditEventRecord(withNull);
+    expect(mapped.actorUser).toBeUndefined();
   });
 });
 
