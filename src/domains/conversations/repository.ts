@@ -112,19 +112,29 @@ export interface ConversationRepositoryDb {
     findMany(args: {
       where: {
         businessId: string;
-        status?: ConversationStatusValue;
+        status?: ConversationStatusValue | { in: ConversationStatusValue[] };
         assignedUserId?: string | null;
         customerId?: string;
         channel?: ChannelTypeValue;
         id?: { gt: string };
+        aiDraftStatus?: AiDraftStatusValue;
+        NOT?: { status: ConversationStatusValue };
       };
       orderBy: { createdAt: 'desc' } | { updatedAt: 'desc' };
-      take: number;
+      take?: number;
       include?: {
         _count?: { select: { messages: boolean } };
         messages?: { orderBy: { createdAt: 'desc' }; take: number };
       };
     }): Promise<ConversationRecordWithSummary[]>;
+    count(args: {
+      where: {
+        businessId: string;
+        status?: ConversationStatusValue | { in: ConversationStatusValue[] } | { not: ConversationStatusValue };
+        aiDraftStatus?: AiDraftStatusValue;
+        NOT?: { status: ConversationStatusValue };
+      };
+    }): Promise<number>;
   };
   message: {
     create(args: {
@@ -239,6 +249,41 @@ export interface ConversationRepository {
     customerId: string,
     businessId: string,
   ): Promise<ActionResult<{ id: string; businessId: string } | null>>;
+
+  // ---------------------------------------------------------------------------
+  // Dashboard aggregate queries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Counts conversations in non-terminal (non-RESOLVED) statuses.
+   */
+  countOpenConversations(
+    businessId: string,
+  ): Promise<ActionResult<number>>;
+
+  /**
+   * Counts conversations with a specific status.
+   */
+  countByStatus(
+    businessId: string,
+    status: ConversationStatusValue,
+  ): Promise<ActionResult<number>>;
+
+  /**
+   * Counts conversations with aiDraftStatus = 'READY' that are not resolved.
+   */
+  countDraftsPendingReview(
+    businessId: string,
+  ): Promise<ActionResult<number>>;
+
+  /**
+   * Counts active conversations where the most recent message is INBOUND
+   * and older than the given cutoff (needs follow-up).
+   */
+  countNeedingFollowUp(
+    businessId: string,
+    cutoff: Date,
+  ): Promise<ActionResult<number>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +530,81 @@ export function createConversationRepository(
           return ok(null);
         }
         return ok({ id: record.id, businessId: record.businessId });
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    // -----------------------------------------------------------------------
+    // Dashboard aggregate queries
+    // -----------------------------------------------------------------------
+
+    async countOpenConversations(businessId) {
+      try {
+        const count = await db.conversation.count({
+          where: { businessId, status: { not: 'RESOLVED' } },
+        });
+        return ok(count);
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async countByStatus(businessId, status) {
+      try {
+        const count = await db.conversation.count({
+          where: { businessId, status },
+        });
+        return ok(count);
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async countDraftsPendingReview(businessId) {
+      try {
+        const count = await db.conversation.count({
+          where: { businessId, aiDraftStatus: 'READY', NOT: { status: 'RESOLVED' } },
+        });
+        return ok(count);
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async countNeedingFollowUp(businessId, cutoff) {
+      try {
+        // Exact count for MVP: loads all active conversations with their
+        // most recent message. The in-memory filter checks direction and age.
+        //
+        // Excludes WAITING_CUSTOMER (operator replied, awaiting customer)
+        // and RESOLVED (terminal).
+        //
+        // Scale note: if conversation volume grows beyond ~5k per business,
+        // replace this with denormalized lastMessageDirection / lastMessageAt
+        // columns on the Conversation model, or a raw SQL aggregate.
+        const FOLLOWUP_STATUSES: ConversationStatusValue[] = [
+          'NEW', 'OPEN', 'ASSIGNED', 'WAITING_OPERATOR', 'ESCALATED',
+        ];
+        const records = await db.conversation.findMany({
+          where: { businessId, status: { in: FOLLOWUP_STATUSES } },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+          },
+        });
+        let count = 0;
+        for (const conv of records) {
+          const lastMsg = conv.messages?.[0];
+          if (
+            lastMsg &&
+            lastMsg.direction === 'INBOUND' &&
+            lastMsg.createdAt.getTime() < cutoff.getTime()
+          ) {
+            count++;
+          }
+        }
+        return ok(count);
       } catch {
         return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
       }
