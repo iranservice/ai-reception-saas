@@ -117,6 +117,9 @@ function createMockRepository(): ConversationRepository {
     countByStatus: vi.fn().mockResolvedValue(ok(0)),
     countDraftsPendingReview: vi.fn().mockResolvedValue(ok(0)),
     countNeedingFollowUp: vi.fn().mockResolvedValue(ok(0)),
+    getWorkloadByAssignee: vi.fn().mockResolvedValue(ok([])),
+    getResolvedTodayByAssignee: vi.fn().mockResolvedValue(ok([])),
+    countUnassignedOpen: vi.fn().mockResolvedValue(ok(0)),
   };
 }
 

@@ -131,10 +131,22 @@ export interface ConversationRepositoryDb {
       where: {
         businessId: string;
         status?: ConversationStatusValue | { in: ConversationStatusValue[] } | { not: ConversationStatusValue };
+        assignedUserId?: string | null | { not: null };
+        closedAt?: { gte: Date };
         aiDraftStatus?: AiDraftStatusValue;
         NOT?: { status: ConversationStatusValue };
       };
     }): Promise<number>;
+    groupBy(args: {
+      by: readonly ['assignedUserId'];
+      where: {
+        businessId: string;
+        assignedUserId?: { not: null };
+        status?: { not: ConversationStatusValue };
+        closedAt?: { gte: Date };
+      };
+      _count: { id: true };
+    }): Promise<{ assignedUserId: string | null; _count: { id: number } }[]>;
   };
   message: {
     create(args: {
@@ -283,6 +295,34 @@ export interface ConversationRepository {
   countNeedingFollowUp(
     businessId: string,
     cutoff: Date,
+  ): Promise<ActionResult<number>>;
+
+  // ---------------------------------------------------------------------------
+  // Operator workload aggregate queries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Groups non-resolved conversations by assignedUserId and returns counts.
+   * Only includes conversations where assignedUserId is not null.
+   */
+  getWorkloadByAssignee(
+    businessId: string,
+  ): Promise<ActionResult<readonly { assignedUserId: string; openCount: number }[]>>;
+
+  /**
+   * Groups resolved-today conversations by assignedUserId and returns counts.
+   * Uses closedAt >= startOfToday as the resolution proxy.
+   */
+  getResolvedTodayByAssignee(
+    businessId: string,
+    startOfToday: Date,
+  ): Promise<ActionResult<readonly { assignedUserId: string; resolvedCount: number }[]>>;
+
+  /**
+   * Counts conversations with no assigned operator that are not resolved.
+   */
+  countUnassignedOpen(
+    businessId: string,
   ): Promise<ActionResult<number>>;
 }
 
@@ -604,6 +644,67 @@ export function createConversationRepository(
             count++;
           }
         }
+        return ok(count);
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    // -----------------------------------------------------------------------
+    // Operator workload aggregate queries
+    // -----------------------------------------------------------------------
+
+    async getWorkloadByAssignee(businessId) {
+      try {
+        const groups = await db.conversation.groupBy({
+          by: ['assignedUserId'] as const,
+          where: {
+            businessId,
+            assignedUserId: { not: null },
+            status: { not: 'RESOLVED' },
+          },
+          _count: { id: true },
+        });
+        return ok(
+          groups
+            .filter((g): g is typeof g & { assignedUserId: string } => g.assignedUserId !== null)
+            .map((g) => ({ assignedUserId: g.assignedUserId, openCount: g._count.id })),
+        );
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async getResolvedTodayByAssignee(businessId, startOfToday) {
+      try {
+        const groups = await db.conversation.groupBy({
+          by: ['assignedUserId'] as const,
+          where: {
+            businessId,
+            assignedUserId: { not: null },
+            closedAt: { gte: startOfToday },
+          },
+          _count: { id: true },
+        });
+        return ok(
+          groups
+            .filter((g): g is typeof g & { assignedUserId: string } => g.assignedUserId !== null)
+            .map((g) => ({ assignedUserId: g.assignedUserId, resolvedCount: g._count.id })),
+        );
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async countUnassignedOpen(businessId) {
+      try {
+        const count = await db.conversation.count({
+          where: {
+            businessId,
+            assignedUserId: null,
+            status: { not: 'RESOLVED' },
+          },
+        });
         return ok(count);
       } catch {
         return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
