@@ -45,6 +45,7 @@ function createMockConvDb(): ConversationRepositoryDb {
       findUnique: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
+      groupBy: vi.fn().mockResolvedValue([]),
     },
     message: {
       create: vi.fn().mockResolvedValue({}),

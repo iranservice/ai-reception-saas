@@ -246,6 +246,7 @@ function createMockPrisma(): PrismaCompatibleClient {
     findUnique: () => Promise.resolve(null),
     findMany: () => Promise.resolve([]),
     count: () => Promise.resolve(0),
+    groupBy: () => Promise.resolve([]),
   };
 
   const messageDelegate: PrismaCompatibleClient['message'] = {
