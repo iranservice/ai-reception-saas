@@ -185,3 +185,38 @@ export interface ApproveDraftResult {
     updatedAt: string;
   };
 }
+
+// ---------------------------------------------------------------------------
+// Current draft read types
+// ---------------------------------------------------------------------------
+
+/** Input for reading the current active draft for a conversation */
+export interface CurrentDraftInput {
+  businessId: string;
+  conversationId: string;
+}
+
+/** Active statuses included in current draft lookup */
+export const ACTIVE_DRAFT_STATUSES: readonly ReplyDraftStatusValue[] = [
+  'PENDING_REVIEW',
+  'EDITED',
+  'APPROVED',
+];
+
+/** Result of current draft read — draft is null when no active draft exists */
+export interface CurrentDraftResult {
+  draft: {
+    id: string;
+    conversationId: string;
+    status: 'PENDING_REVIEW' | 'EDITED' | 'APPROVED';
+    source: ReplyDraftSourceValue;
+    draftText: string;
+    draftTextPreview: string;
+    originalText: string | null;
+    reviewedAt: string | null;
+    reviewedByUserId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+}
+

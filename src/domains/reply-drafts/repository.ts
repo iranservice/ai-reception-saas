@@ -19,7 +19,10 @@ import type {
   EditDraftResult,
   ApproveDraftInput,
   ApproveDraftResult,
+  CurrentDraftInput,
+  CurrentDraftResult,
 } from './types';
+import { ACTIVE_DRAFT_STATUSES } from './types';
 
 // ---------------------------------------------------------------------------
 // Local record types (match Prisma-selected fields)
@@ -212,6 +215,16 @@ export interface ReplyDraftRepository {
   approveDraft(
     input: ApproveDraftInput,
   ): Promise<ActionResult<ApproveDraftResult>>;
+
+  /**
+   * Returns the latest active (PENDING_REVIEW | EDITED | APPROVED) draft
+   * for a conversation. Returns `{ draft: null }` when no active draft exists.
+   * Includes full draftText and originalText for operator review/editing.
+   * Does NOT mutate anything.
+   */
+  getCurrentByConversation(
+    input: CurrentDraftInput,
+  ): Promise<ActionResult<CurrentDraftResult>>;
 
   /**
    * Counts reviewable (PENDING_REVIEW | EDITED) drafts for a conversation.
@@ -593,6 +606,41 @@ export function createReplyDraftRepository(
             reviewedAt: updated.reviewedAt?.toISOString() ?? null,
             reviewedByUserId: updated.reviewedByUserId,
             updatedAt: updated.updatedAt.toISOString(),
+          },
+        });
+      } catch {
+        return err(REPO_ERROR_CODE, REPO_ERROR_MSG);
+      }
+    },
+
+    async getCurrentByConversation(input) {
+      try {
+        const records = await db.replyDraft.findMany({
+          where: {
+            businessId: input.businessId,
+            conversationId: input.conversationId,
+            status: { in: [...ACTIVE_DRAFT_STATUSES] as ReplyDraftStatusValue[] },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        });
+        const record = (records[0] as ReplyDraftRecord | undefined) ?? null;
+        if (!record) {
+          return ok({ draft: null });
+        }
+        return ok({
+          draft: {
+            id: record.id,
+            conversationId: record.conversationId,
+            status: record.status as 'PENDING_REVIEW' | 'EDITED' | 'APPROVED',
+            source: record.source,
+            draftText: record.draftText,
+            draftTextPreview: truncatePreview(record.draftText),
+            originalText: record.originalText ?? null,
+            reviewedAt: record.reviewedAt?.toISOString() ?? null,
+            reviewedByUserId: record.reviewedByUserId,
+            createdAt: record.createdAt.toISOString(),
+            updatedAt: record.updatedAt.toISOString(),
           },
         });
       } catch {
