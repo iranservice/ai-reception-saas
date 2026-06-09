@@ -11,6 +11,7 @@ export {
   REPLY_DRAFT_SOURCE_VALUES,
   REPLY_DRAFT_STATUS_VALUES,
   REVIEWABLE_DRAFT_STATUSES,
+  ACTIVE_DRAFT_STATUSES,
   type ReplyDraftSourceValue,
   type ReplyDraftStatusValue,
   type ReplyDraftIdentity,
@@ -23,6 +24,8 @@ export {
   type EditDraftResult,
   type ApproveDraftInput,
   type ApproveDraftResult,
+  type CurrentDraftInput,
+  type CurrentDraftResult,
 } from './types';
 
 export {
