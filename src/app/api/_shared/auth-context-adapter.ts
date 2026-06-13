@@ -28,6 +28,7 @@ import {
   isAuthjsRequestContextEnabled,
   createDefaultAuthjsAdapter,
 } from './authjs-context-adapter';
+import { assertDevBypassGuard } from '@/lib/security/dev-bypass-guard';
 
 // ---------------------------------------------------------------------------
 // Feature flag
@@ -308,9 +309,17 @@ export function createDevHeaderAuthContextAdapter(
  * When ENABLE_AUTHJS_REQUEST_CONTEXT is "true", returns the Auth.js
  * session-backed adapter. Otherwise returns the dev header adapter.
  *
+ * Fail-closed defense-in-depth (A-R2): before selecting an adapter, the
+ * dev-bypass deployment guard is asserted. In a real-data environment this
+ * throws unless ENABLE_AUTHJS_REQUEST_CONTEXT="true" and the dev-bypass
+ * flags are off — so the dev-header adapter can never be handed out where
+ * real data can exist, even if the bootstrap guard was somehow skipped.
+ *
  * TASK-0039: Added Auth.js adapter selection behind feature flag.
  */
 export function getDefaultAuthContextAdapter(): AuthContextAdapter {
+  assertDevBypassGuard();
+
   if (isAuthjsRequestContextEnabled()) {
     return createDefaultAuthjsAdapter();
   }
